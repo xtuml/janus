@@ -1,14 +1,14 @@
 """
 Graph class to hold model info
 """
-from typing import Type
+from typing import Type, Union
 
 from ortools.sat.python.cp_model import CpModel, CpSolver
 from flatdict import FlatterDict
 import numpy as np
 from .core.edge import Edge
 from .core.group import ORGroup, XORGroup, ANDGroup, Group
-from .core.event import Event
+from .core.event import Event, LoopEvent
 from .utils.utils import solve_model
 
 
@@ -26,7 +26,7 @@ class Graph:
         self.model = CpModel()
         self.edges: dict[str, Edge] = {}
         self.groups: dict[tuple, Group] = {}
-        self.events: dict[str, Event] = {}
+        self.events: dict[str, Union[Event, LoopEvent]] = {}
         self.solutions = None
 
     def add_edges(self, edge_uids: list[str]) -> None:
@@ -72,7 +72,12 @@ class Graph:
         graph_def_flat = FlatterDict(graph_def)
         edges_duplicates = [
             value for key, value in graph_def_flat.items()
-            if "type" not in key and value
+            if all(
+                restricted_key not in key and value
+                for restricted_key in [
+                    "type", "loop_graph", "is_loop"
+                ]
+            )
         ]
         return edges_duplicates
 
@@ -115,6 +120,8 @@ class Graph:
         """Method to parse a graph definition standard input and create and
         hold an ILP model in the instance.
 
+        Will set loop events if they are present in the graph definition.
+
         :param graph_def: The standard graph definition input.
         :type graph_def: `dict`
         """
@@ -137,16 +144,36 @@ class Graph:
             )
             # create event
             is_source = not group_in
-            event = Event(
-                model=self.model,
-                in_group=group_in,
-                out_group=group_out,
-                is_source=is_source,
-                meta_data=(
-                    event_def["meta-data"] if "meta-data" in event_def
-                    else None
+            # check if event is loop event or normal event
+            if "is_loop" in event_def:
+                if event_def["is_loop"]:
+                    # instantiate a graph (needed due to circular imports)
+                    sub_graph = Graph()
+                    # create the loop event
+                    event = LoopEvent(
+                        model=self.model,
+                        sub_graph=sub_graph,
+                        in_group=group_in,
+                        out_group=group_out,
+                        is_source=is_source,
+                        meta_data=(
+                            event_def["meta-data"] if "meta-data" in event_def
+                            else None
+                        )
+                    )
+                    # set the loop event sub graph
+                    event.set_graph_with_graph_def(event_def["loop_graph"])
+            else:
+                event = Event(
+                    model=self.model,
+                    in_group=group_in,
+                    out_group=group_out,
+                    is_source=is_source,
+                    meta_data=(
+                        event_def["meta-data"] if "meta-data" in event_def
+                        else None
+                    )
                 )
-            )
             self.events[event_uid] = event
 
     def create_sub_groups(

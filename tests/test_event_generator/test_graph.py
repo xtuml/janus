@@ -3,28 +3,33 @@ Tests for graph.py
 """
 import pytest
 from test_event_generator.graph import Graph
+from test_event_generator.core.event import Event, LoopEvent
 from test_event_generator.core.group import ORGroup, XORGroup, ANDGroup
 
 
 class TestSelectGroup:
     """Test for :class:`Graph`.`select_group`
     """
-    def test_select_group_or(self) -> None:
+    @staticmethod
+    def test_select_group_or() -> None:
         """OR Group test
         """
         assert Graph.select_group("OR") == ORGroup
 
-    def test_select_group_xor(self) -> None:
+    @staticmethod
+    def test_select_group_xor() -> None:
         """XOR Group test
         """
         assert Graph.select_group("XOR") == XORGroup
 
-    def test_select_group_and(self) -> None:
+    @staticmethod
+    def test_select_group_and() -> None:
         """AND Group test
         """
         assert Graph.select_group("AND") == ANDGroup
 
-    def test_select_group_default(self) -> None:
+    @staticmethod
+    def test_select_group_default() -> None:
         """Default behaviour test
         """
         assert Graph.select_group("Unknown") == ORGroup
@@ -33,7 +38,8 @@ class TestSelectGroup:
 class TestCreateSubGroups:
     """Tests for :class:`Graph`.`create_sub_groups`
     """
-    def test_no_graph_def(self) -> None:
+    @staticmethod
+    def test_no_graph_def() -> None:
         """Test that providing the parameter group_def with `None` returns
         `None`.
         """
@@ -44,7 +50,8 @@ class TestCreateSubGroups:
             is_into_event=True
         )
 
-    def test_incorrect_key_tuple(self, graph_def: dict) -> None:
+    @staticmethod
+    def test_incorrect_key_tuple(graph_def: dict) -> None:
         """Test that providing an incorrect key_tuple raise the correct
         Exception.
 
@@ -63,7 +70,8 @@ class TestCreateSubGroups:
             "highest group"
         )
 
-    def test_incorrect_group_def_no_type_key(self) -> None:
+    @staticmethod
+    def test_incorrect_group_def_no_type_key() -> None:
         """Test that not providing the key "type" in the group_def dictionary
         raises the correct Exception.
         """
@@ -76,7 +84,8 @@ class TestCreateSubGroups:
             )
         assert e_info.value.args[0] == "type"
 
-    def test_incorrect_group_def_no_sub_groups_key(self) -> None:
+    @staticmethod
+    def test_incorrect_group_def_no_sub_groups_key() -> None:
         """Test not providing the key "sub_groups" in the group_def dictionary
         raises the correct Exception.
         """
@@ -89,8 +98,8 @@ class TestCreateSubGroups:
             )
         assert e_info.value.args[0] == "sub_groups"
 
+    @staticmethod
     def test_edge_not_found(
-        self,
         graph_def: dict,
         edges: list[str]
     ) -> None:
@@ -124,8 +133,8 @@ class TestCreateSubGroups:
                 ])
             )
 
+    @staticmethod
     def test_shallow_edges(
-        self,
         graph_def: dict,
         edges: list[str]
     ) -> None:
@@ -156,8 +165,8 @@ class TestCreateSubGroups:
         for edge in graph.edges.values():
             assert edge in graph.groups[("Event_E", "in")].group_variables
 
+    @staticmethod
     def test_nested_groups(
-        self,
         graph_def: dict,
         edges: list[str]
     ) -> None:
@@ -209,7 +218,8 @@ class TestCreateSubGroups:
 class TestEdgeExtraction:
     """Tests that test methods for edge extraction from a graph definition.
     """
-    def test_unique_edges_too_many(self, edges: list[str]) -> None:
+    @staticmethod
+    def test_unique_edges_too_many(edges: list[str]) -> None:
         """Tests that the correct Exception is raised when there are too many
         of the same edge uid in a list. Tests :class:`Graph`.`unique_edges`.
 
@@ -223,7 +233,8 @@ class TestEdgeExtraction:
             "Some of the edges have more than 2 ocurrences"
         )
 
-    def test_unique_edges_too_few(self, edges: list[str]) -> None:
+    @staticmethod
+    def test_unique_edges_too_few(edges: list[str]) -> None:
         """Tests that the correct Exception is raised when there are too few
         of the same edge uid in a list. Tests :class:`Graph`.`unique_edges`.
 
@@ -237,7 +248,8 @@ class TestEdgeExtraction:
             "Some of the edges have less than 2 ocurrences"
         )
 
-    def test_unique_edges_too_few_too_many(self, edges: list[str]) -> None:
+    @staticmethod
+    def test_unique_edges_too_few_too_many(edges: list[str]) -> None:
         """Tests that the correct Exception is raised when there are both too
         few and too many of some of the edge uids in a list. Tests
         :class:`Graph`.`unique_edges`.
@@ -253,8 +265,8 @@ class TestEdgeExtraction:
             " and some have less than 2 occurences."
         )
 
+    @staticmethod
     def test_get_duplicates_remove_one(
-        self,
         graph_def: dict,
         edges: list[str]
     ) -> None:
@@ -277,8 +289,8 @@ class TestEdgeExtraction:
             else:
                 assert duplicate_edges.count(edge) == 2
 
+    @staticmethod
     def test_get_duplicates_add_one(
-        self,
         graph_def: dict,
         edges: list[str]
     ) -> None:
@@ -301,8 +313,8 @@ class TestEdgeExtraction:
             else:
                 assert duplicate_edges.count(edge) == 2
 
+    @staticmethod
     def test_get_duplicates(
-        self,
         graph_def: dict,
         edges: list[str]
     ) -> None:
@@ -318,8 +330,8 @@ class TestEdgeExtraction:
         for edge in edges:
             assert duplicate_edges.count(edge) == 2
 
+    @staticmethod
     def test_extract_edges_correct(
-        self,
         graph_def: dict,
         edges: list[str]
     ) -> None:
@@ -338,79 +350,84 @@ class TestEdgeExtraction:
 class TestParseGraphDef:
     """Tests for the method :class:`Graph`.`parse_graph_def`.
     """
+    @staticmethod
     def test_edges_added_correctly(
-        self,
-        graph_def: dict,
+        parsed_graph: Graph,
         edges: list[str]
     ) -> None:
         """Test that edges are added correctly to :class:`Graph` instance.
 
-        :param graph_def: Standardised graph defintion.
-        :type graph_def: `dict`
+        :param parsed_graph: A graph instance containing a parsed graph
+        definition.
+        :type parsed_graph: :class:`Graph`
         :param edges: List of edge uids.
         :type edges: `list`[`str`]
         """
-        graph = Graph()
-        graph.parse_graph_def(graph_def)
-        assert sorted(edges) == sorted(graph.edges.keys())
+        assert sorted(edges) == sorted(parsed_graph.edges.keys())
 
+    @staticmethod
     def test_events_added_correctly(
-        self,
-        graph_def: dict,
+        parsed_graph: Graph,
+        graph_def: dict[str, dict]
     ) -> None:
         """Test that events are added correctly to :class:`Graph` instance.
 
+        :param parsed_graph: A graph instance containing a parsed graph
+        definition.
+        :type parsed_graph: :class:`Graph`
         :param graph_def: Standardised graph defintion.
         :type graph_def: `dict`
         """
-        graph = Graph()
-        graph.parse_graph_def(graph_def)
-        assert sorted(graph_def.keys()) == sorted(graph.events.keys())
+        assert sorted(graph_def.keys()) == sorted(parsed_graph.events.keys())
 
+    @staticmethod
     def test_events_contain_correct_groups(
-        self,
+        parsed_graph: Graph,
         graph_def: dict
     ) -> None:
         """Test that "in" and "out" groups are added correctly to
         :class:`Graph` instance.
 
+        :param parsed_graph: A graph instance containing a parsed graph
+        definition.
+        :type parsed_graph: :class:`Graph`
         :param graph_def: Standardised graph defintion.
         :type graph_def: `dict`
         """
-        graph = Graph()
-        graph.parse_graph_def(graph_def)
         for event_uid, event_def in graph_def.items():
-            group_in = graph.events[event_uid].in_group
-            group_out = graph.events[event_uid].out_group
+            group_in = parsed_graph.events[event_uid].in_group
+            group_out = parsed_graph.events[event_uid].out_group
             if event_def["group_in"]:
-                assert graph.groups[(event_uid, "in")] == group_in
+                assert parsed_graph.groups[(event_uid, "in")] == group_in
             if event_def["group_out"]:
-                assert graph.groups[(event_uid, "out")] == group_out
+                assert parsed_graph.groups[(event_uid, "out")] == group_out
 
+    @staticmethod
     def test_event_is_source(
-        self,
+        parsed_graph: Graph,
         graph_def: dict
     ) -> None:
         """Test that an event is correctly identified as a source if it only
         has an "out" group.
         :class:`Graph` instance.
 
+        :param parsed_graph: A graph instance containing a parsed graph
+        definition.
+        :type parsed_graph: :class:`Graph`
         :param graph_def: Standardised graph defintion.
         :type graph_def: `dict`
         """
-        graph = Graph()
-        graph.parse_graph_def(graph_def)
         for event_uid, event_def in graph_def.items():
             if not event_def["group_in"] and event_def["group_out"]:
-                assert graph.events[event_uid].is_source
+                assert parsed_graph.events[event_uid].is_source
 
 
 class TestSolve:
     """Tests of the solving of the ILP model and converting to Event solutions.
     """
+    @staticmethod
     def test_convert_to_event_solutions(
-        self,
-        graph_def: dict,
+        parsed_graph: Graph,
         expected_solutions: list[dict[str, int]],
         expected_group_solutions: dict[int, dict[str, int]]
     ) -> None:
@@ -418,17 +435,16 @@ class TestSolve:
         correct Event solutions are output from the given input group
         solutions.
 
-        :param graph_def: Standardised graph definition.
-        :type graph_def: `dict`
+        :param parsed_graph: A graph instance containing a parsed graph
+        definition.
+        :type parsed_graph: :class:`Graph`
         :param expected_solutions: List of expected event solutions.
         :type expected_solutions: `list`[`dict`[`str`, `int`]]
         :param expected_group_solutions: The group solutions to convert to
         event solutions.
         :type expected_group_solutions: `dict`[`int`, `dict`[`str`, `int`]]
         """
-        graph = Graph()
-        graph.parse_graph_def(graph_def)
-        converted_solutions = graph.convert_to_event_solutions(
+        converted_solutions = parsed_graph.convert_to_event_solutions(
             expected_group_solutions
         )
         converted_solutions = sorted(
@@ -439,36 +455,36 @@ class TestSolve:
             for event_id, value in expected_solutions[i].items():
                 assert value == converted_solutions[i][event_id]
 
+    @staticmethod
     def test_solve_num_sols(
-        self,
-        graph_def: dict
+        parsed_graph: Graph
     ) -> None:
         """Tests :class:`Graph`.`solve` to ensure the number of found
         solutions from the input graph definition is correct.
 
-        :param graph_def: Standardised graph definition.
-        :type graph_def: `dict`
+        :param parsed_graph: A graph instance containing a parsed graph
+        definition.
+        :type parsed_graph: :class:`Graph`
         """
-        graph = Graph()
-        graph.parse_graph_def(graph_def)
-        graph.solve()
-        assert len(graph.solutions) == 2
+        parsed_graph.solve()
+        assert len(parsed_graph.solutions) == 2
 
+    @staticmethod
     def test_solve_sols_correct(
-        self,
-        graph_def: dict,
+        parsed_graph: Graph,
         expected_solutions: list[dict[str, int]],
     ) -> None:
         """Tests :class:`Graph`.`solve` to ensure the solutons found from the
         input graph definition are correct.
 
-        :param graph_def: Standardised graph definition.
-        :type graph_def: `dict`
+        :param parsed_graph: A graph instance containing a parsed graph
+        definition.
+        :type parsed_graph: :class:`Graph`
+        :param expected_solutions: List of expected event solutions.
+        :type expected_solutions: `list`[`dict`[`str`, `int`]]
         """
-        graph = Graph()
-        graph.parse_graph_def(graph_def)
-        graph.solve()
-        actual_solutions = graph.solutions
+        parsed_graph.solve()
+        actual_solutions = parsed_graph.solutions
         # sort actual solutions by total sum of values to order like expected
         actual_solutions = sorted(
             actual_solutions,
@@ -477,3 +493,89 @@ class TestSolve:
         for i in range(2):
             for event_id, value in expected_solutions[i].items():
                 assert value == actual_solutions[i][event_id]
+
+
+class TestLoopEvents:
+    """Test the implementation of loop event when parsed by
+    :class:`Graph`.`parse_graph_def`.
+    """
+    @staticmethod
+    @pytest.fixture
+    def parsed_graph_with_loop(
+        graph_def_with_loop: dict[str, dict]
+    ) -> Graph:
+        """PyTest fixture to provide a :class:`Graph` instance that has parsed
+        a standard graph definition that contains a loop event.
+
+        :param graph_def_with_loop: Standardised graph definition containing a
+        loop event.
+        :type graph_def_with_loop: `dict`[`str`, `dict`]
+        :return: Returns a :class:`Graph` instance that has parsed the graph
+        defintion with loop event.
+        :rtype: :class:`Graph`
+        """
+        graph = Graph()
+        graph.parse_graph_def(graph_def_with_loop)
+        return graph
+
+    @staticmethod
+    @pytest.fixture
+    def loop_event(parsed_graph_with_loop: Graph) -> Event | LoopEvent:
+        """PyTest fixture that extracts the loop event from the parsed graph
+
+        :param parsed_graph_with_loop: The :class:`Graph` instance that parsed
+        the graph definition with loop event.
+        :type parsed_graph_with_loop: :class:`Graph`
+        :return: Returns the extracted :class:`Event`
+        :rtype: :class:`Event` | :class:`LoopEvent`
+        """
+        return parsed_graph_with_loop.events["Event_Loop"]
+
+    @staticmethod
+    def test_loop_event_added_correctly(
+        loop_event: LoopEvent
+    ) -> None:
+        """Tests that the loop event is an instance of :class:`LoopEvent`.
+
+        :param loop_event: The extracted loop event.
+        :type loop_event: :class:`LoopEvent`
+        """
+        assert isinstance(loop_event, LoopEvent)
+
+    @staticmethod
+    def test_loop_event_sub_graph_correct(
+        loop_event: LoopEvent,
+        loop_sub_graph_def: dict[str, dict],
+        sub_graph_edges: list[str]
+    ) -> None:
+        """Tests the sub graph has been correctly formed from the parsed graph
+        definition.
+
+        :param loop_event: The :class:`LoopEvent`
+        :type loop_event: :class:`LoopEvent`
+        :param loop_sub_graph_def: The graph definition for the loop subgraph.
+        :type loop_sub_graph_def: `dict`[`str`, `dict`]
+        :param sub_graph_edges: The edge uids in the loop subgraph.
+        :type sub_graph_edges: `list`[`str`]
+        """
+        loop_event_sub_graph: Graph = loop_event.sub_graph
+        # test edges added correctly
+        TestParseGraphDef.test_edges_added_correctly(
+            loop_event_sub_graph,
+            sub_graph_edges
+        )
+        # test events added correctly
+        TestParseGraphDef.test_events_added_correctly(
+            parsed_graph=loop_event_sub_graph,
+            graph_def=loop_sub_graph_def
+        )
+        # test events contain correct groups
+        TestParseGraphDef.test_events_contain_correct_groups(
+            parsed_graph=loop_event_sub_graph,
+            graph_def=loop_sub_graph_def
+        )
+        # test source events
+        TestParseGraphDef.test_event_is_source(
+            parsed_graph=loop_event_sub_graph,
+            graph_def=loop_sub_graph_def
+        )
