@@ -363,3 +363,108 @@ def edges_graph_loop() -> list[str]:
         "edge_X_loop",
         "edge_loop_Y"
     ]
+
+
+@pytest.fixture
+def expected_solutions_graph_loop_event() -> list[dict[str, int]]:
+    """PyTest fixture to provide the expected Event solutions for the graph
+    with loop event.
+
+    :return: List of Event solutions.
+    :rtype: `list`[`dict`[`str`, `int`]]
+    """
+    return [
+        {
+            "Event_X": 1,
+            "Event_Loop": 1,
+            "Event_Y": 1,
+        }
+    ]
+
+
+@pytest.fixture
+def expected_group_solutions_graph_loop_event() -> dict[int, dict[str, int]]:
+    """PyTest fixture to provide expected Group solutions for the graph with
+    loop event.
+
+    :return: Dictionary of group solutions.
+    :rtype: `dict`[`int`, `dict`[`str`, `int`]]
+    """
+    return {
+        0: {
+            "Event_X.out": 1,
+            "Event_Loop.in": 1,
+            "Event_Loop.out": 1,
+            "Event_Y.in": 1
+        }
+    }
+
+
+@pytest.fixture
+def expected_solutions_sub_graph() -> list[dict[str, int]]:
+    """PyTest fixture to provide expected Event solutions to the loop sub
+    graph.
+
+    :return: List of Event solutions.
+    :rtype: `list`[`dict`[`str`, `int`]]
+    """
+    return [
+        {
+            "StartEvent": 1,
+            "Event_A": 1,
+            "Event_B": 1,
+            "Event_C": 0,
+            "Event_D": 0,
+            "Event_E": 0,
+            "EndEvent": 1
+        },
+        {
+            "StartEvent": 1,
+            "Event_A": 1,
+            "Event_B": 0,
+            "Event_C": 1,
+            "Event_D": 1,
+            "Event_E": 1,
+            "EndEvent": 1
+        },
+    ]
+
+
+@pytest.fixture
+def expected_group_solutions_sub_graph() -> dict[int, dict[str, int]]:
+    """PyTest fixture to provide expected Group solutions to the loop sub
+    graph.
+
+    :return: Dictionary of Group solutions.
+    :rtype: `dict`[`int`, `dict`[`str`, `int`]]
+    """
+    return {
+        0: {
+            "StartEvent.out": 1,
+            "Event_A.in": 1,
+            "Event_A.out": 1,
+            "Event_B.in": 1,
+            "Event_B.out": 1,
+            "Event_C.in": 0,
+            "Event_C.out": 0,
+            "Event_D.in": 0,
+            "Event_D.out": 0,
+            "Event_E.in": 0,
+            "Event_E.out": 0,
+            "EndEvent.in": 1
+        },
+        1: {
+            "StartEvent.out": 1,
+            "Event_A.in": 1,
+            "Event_A.out": 1,
+            "Event_B.in": 0,
+            "Event_B.out": 0,
+            "Event_C.in": 1,
+            "Event_C.out": 1,
+            "Event_D.in": 1,
+            "Event_D.out": 1,
+            "Event_E.in": 1,
+            "Event_E.out": 1,
+            "EndEvent.in": 1
+        },
+    }

@@ -1,7 +1,7 @@
 """
 Graph class to hold model info
 """
-from typing import Type, Union
+from typing import Type, Union, Iterable
 
 from ortools.sat.python.cp_model import CpModel, CpSolver
 from flatdict import FlatterDict
@@ -299,6 +299,10 @@ class Graph:
         )
         # get events solutions
         self.solutions = self.convert_to_event_solutions(group_solutions)
+        # solve all loop event subgraphs
+        self.solve_loop_events_sub_graphs(
+            loop_events=self.filter_events(self.events.values())
+        )
 
     def convert_to_event_solutions(
         self,
@@ -325,3 +329,36 @@ class Graph:
                 events_solution[event_id] = in_solution | out_solution
             events_solutions.append(events_solution)
         return events_solutions
+
+    @staticmethod
+    def solve_loop_events_sub_graphs(loop_events: Iterable[LoopEvent]) -> None:
+        """Static method to solve the subgraphs of the :class:`LoopEvent`'s in
+        the iterable input.
+
+        :param loop_events: Iterable of :class:`LoopEvent`'s
+        :type loop_events: :class:`Iterable`[:class:`LoopEvent`]
+        :raises :class:`RuntimeError`: Raises Exception when any of the values
+        in the iterable are not instance of :class:`LoopEvent`.
+        """
+        # check for any events not LoopEvent
+        if any(not isinstance(event, LoopEvent) for event in loop_events):
+            raise RuntimeError(
+                "At least one of the events is not a LoopEvent."
+            )
+        for loop_event in loop_events:
+            loop_event.solve_sub_graph()
+
+    @staticmethod
+    def filter_events(
+        loop_events: Iterable[Union[Event, LoopEvent]]
+    ) -> list[LoopEvent]:
+        """Filters out anything but instances of :class:`LoopEvent` from the
+        input iterable.
+
+        :param loop_events: Iterable of :class:`Event`
+        :type loop_events: :class:`Iterable`[:class:`Union`[:class:`Event`,
+        :class:`LoopEvent`]]
+        :return: Returns a list of :class:`LoopEvent`'s
+        :rtype: `list`[:class:`LoopEvent`]
+        """
+        return list(filter(lambda x: isinstance(x, LoopEvent), loop_events))
