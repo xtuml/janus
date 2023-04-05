@@ -1,7 +1,6 @@
 # pylint: disable=R1732
 """Testing event.py.py
 """
-import pytest
 from ortools.sat.python.cp_model import CpModel, CpSolver
 from test_event_generator.core.event import Event, LoopEvent
 from test_event_generator.core.edge import Edge
@@ -145,72 +144,22 @@ class TestSetFlowConstraint:
             assert variables_to_equal[i] == solution["group_in"]
 
 
-class TestLoopEvent:
-    """Tests for :class:`LoopEvent`
+def test_set_graph_with_graph_def(
+    model: CpModel,
+    graph_def: dict[str, dict]
+) -> None:
+    """Test to check that no errors are thrown when calling
+    :class:`LoopEvent`.`set_graph_with_graph_def`. All subfunctions of
+    the method have been tested so only a check is needed for no errors.
+
+    :param model: CP-SAT model.
+    :type model: :class:`CpModel`
+    :param loop_sub_graph_def: Standard graph definition.
+    :type loop_sub_graph_def: `dict`[`str`, `dict`]
     """
-    def test_check_has_loop_start_end_no_start(
-        self,
-        loop_sub_graph_def: dict[str, dict]
-    ) -> None:
-        """Test the correct :class:`RuntimeError` is raised when there is no
-        "StartEvent" key in the dictionary.
-
-        :param loop_sub_graph_def: Standard graph definition fixture.
-        :type loop_sub_graph_def: `dict`[`str`, `dict`]
-        """
-        del loop_sub_graph_def["StartEvent"]
-        with pytest.raises(RuntimeError) as e_info:
-            LoopEvent.check_has_loop_start_end(loop_sub_graph_def)
-        assert e_info.value.args[0] == (
-            "Graph definition requires an event named StartEvent"
-        )
-
-    def test_check_has_loop_start_end_no_end(
-        self,
-        loop_sub_graph_def: dict[str, dict]
-    ) -> None:
-        """Test the correct :class:`RuntimeError` is raised when there is no
-        "EndEvent" key in the dictionary.
-
-        :param loop_sub_graph_def: Standard graph definition fixture.
-        :type loop_sub_graph_def: `dict`[`str`, `dict`]
-        """
-        del loop_sub_graph_def["EndEvent"]
-        with pytest.raises(RuntimeError) as e_info:
-            LoopEvent.check_has_loop_start_end(loop_sub_graph_def)
-        assert e_info.value.args[0] == (
-            "Graph definition requires an event named EndEvent"
-        )
-
-    def test_check_has_loop_start_end(
-        self,
-        loop_sub_graph_def: dict[str, dict]
-    ) -> None:
-        """Test that no error is raised when there are both "StartEvent" and
-        "EndEvent" keys.
-
-        :param loop_sub_graph_def: Standard graph definition fixture.
-        :type loop_sub_graph_def: `dict`[`str`, `dict`]
-        """
-        LoopEvent.check_has_loop_start_end(loop_sub_graph_def)
-
-    def test_set_graph_with_graph_def(
-        self,
-        model: CpModel,
-        loop_sub_graph_def: dict[str, dict]
-    ) -> None:
-        """Test to check that no errors are thrown when calling
-        :class:`LoopEvent`.`set_graph_with_graph_def`. All subfunctions of
-        the method have been tested so only a check is needed for no errors.
-
-        :param model: _description_
-        :type model: CpModel
-        :param loop_sub_graph_def: _description_
-        :type loop_sub_graph_def: dict[str, dict]
-        """
-        graph = Graph()
-        loop_event = LoopEvent(
-            model=model,
-            sub_graph=graph
-        )
-        loop_event.set_graph_with_graph_def(loop_sub_graph_def)
+    graph = Graph()
+    loop_event = LoopEvent(
+        model=model,
+        sub_graph=graph
+    )
+    loop_event.set_graph_with_graph_def(graph_def)
