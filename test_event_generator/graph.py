@@ -1,9 +1,9 @@
 """
 Graph class to hold model info
 """
-from typing import Type, Union, Iterable
+from typing import Type, Union, Iterable, Optional
 
-from ortools.sat.python.cp_model import CpModel, CpSolver
+from ortools.sat.python.cp_model import CpModel, CpSolver, IntVar
 from flatdict import FlatterDict
 import numpy as np
 from .core.edge import Edge
@@ -129,6 +129,8 @@ class Graph:
         edges = self.extract_edges(graph_def)
         self.add_edges(edges)
         # loop through events in graph def and recursively set groups
+        # add starting events to list
+        starting_event_out_group_variables = []
         for event_uid, event_def in graph_def.items():
             # create group in
             group_in = self.create_sub_groups(
@@ -143,38 +145,97 @@ class Graph:
                 is_into_event=False
             )
             # create event
-            is_source = not group_in
-            # check if event is loop event or normal event
-            if "is_loop" in event_def:
-                if event_def["is_loop"]:
-                    # instantiate a graph (needed due to circular imports)
-                    sub_graph = Graph()
-                    # create the loop event
-                    event = LoopEvent(
-                        model=self.model,
-                        sub_graph=sub_graph,
-                        in_group=group_in,
-                        out_group=group_out,
-                        is_source=is_source,
-                        meta_data=(
-                            event_def["meta-data"] if "meta-data" in event_def
-                            else None
-                        )
-                    )
-                    # set the loop event sub graph
-                    event.set_graph_with_graph_def(event_def["loop_graph"])
-            else:
-                event = Event(
-                    model=self.model,
-                    in_group=group_in,
-                    out_group=group_out,
-                    is_source=is_source,
-                    meta_data=(
-                        event_def["meta-data"] if "meta-data" in event_def
-                        else None
-                    )
+            event = self.create_event(
+                model=self.model,
+                group_in=group_in,
+                group_out=group_out,
+                meta_data=(
+                    event_def["meta_data"] if "meta_data" in event_def
+                    else None
+                ),
+                loop_graph=(
+                    event_def["loop_graph"] if "loop_graph" in event_def
+                    else None
                 )
+            )
             self.events[event_uid] = event
+            # add starting event group out variable to list
+            if event.is_start:
+                starting_event_out_group_variables.append(group_out.variable)
+        # set the starting point constraint
+        self.set_start_point_constraint(
+            model=self.model,
+            group_variables=starting_event_out_group_variables
+        )
+
+    @staticmethod
+    def create_event(
+        model: CpModel,
+        group_in: Optional[Group] = None,
+        group_out: Optional[Group] = None,
+        meta_data: Optional[dict] = None,
+        loop_graph: Optional[dict] = None
+    ) -> LoopEvent | Event:
+        """Create :class:`Event` from :class:`CpModel`
+        instance, an instance of :class:`Group` (or `None`) for the group into
+        the event, an instance of :class:`Group` (or `None`) for the group
+        out of the event, meta_data dictionary if present and loop_graph
+        defintion dictionary if present.
+
+        :param model: CP-SAT model
+        :type model: :class:`CpModel`
+        :param group_in: :class:`Group` entering the :class:`Event`, defaults
+        to `None`
+        :type group_in: :class:`Optional`[:class:`Group`], optional
+        :param group_out: :class:`Group` exiting the :class:`Event`, defaults
+        to `None`
+        :type group_out: :class:`Optional`[:class:`Group`], optional
+        :param meta_data: Dictionary containing arbitrary meta data, defaults
+        to `None`
+        :type meta_data: :class:`Optional`[`dict`], optional
+        :param loop_graph: Standardise graph definiton for a loop event,
+        defaults to `None`
+        :type loop_graph: :class:`Optional`[`dict`], optional
+        :return: Returns the instance of the created :class:`Event` or
+        :class:`LoopEvent`
+        :rtype: LoopEvent | Event
+        """
+
+        kwaargs = {
+            "model": model,
+            "in_group": group_in,
+            "out_group": group_out,
+        }
+        # check for meta data
+        if meta_data:
+            kwaargs["meta_data"] = meta_data
+        # check if loop event
+        if loop_graph:
+            kwaargs["sub_graph"] = Graph()
+            event = LoopEvent(**kwaargs)
+            # set the loop event sub graph
+            event.set_graph_with_graph_def(loop_graph)
+        else:
+            event = Event(**kwaargs)
+        return event
+
+    @staticmethod
+    def set_start_point_constraint(
+        model: CpModel,
+        group_variables: Iterable[IntVar]
+    ) -> None:
+        """Method to set the start point constraints of a :class:`CpModel`
+        from an iterable of :class:`IntVar`.
+
+        :param model: CP-SAT model
+        :type model: :class:`CpModel`
+        :param group_variables: :class:`IntVar` variables from out
+        :class:`Group`'s of starting events.
+        :type group_variables: :class:`Iterable`[:class:`IntVar`]
+        """
+        model.Add(
+            sum(group_variables) > 0
+        )
 
     def create_sub_groups(
         self,

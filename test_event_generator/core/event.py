@@ -23,9 +23,6 @@ class Event:
     :type in_group: :class:`Optional`[:class:`Group`], optional
     :param out_group: The :class:`Group`, defaults to `None`
     :type out_group: :class:`Optional`[:class:`Group`], optional
-    :param is_source: Boolean signifying if the instance is a source Event
-    (`True`) or not (`False`), defaults to `False`
-    :type is_source: `bool`, optional
     :param meta_data: A dictionary of meta-data relating to the Event,
      defaults to `None`
     :type meta_data: :class:`Optional`[`dict`], optional
@@ -37,7 +34,6 @@ class Event:
         model: CpModel,
         in_group: Optional[Group] = None,
         out_group: Optional[Group] = None,
-        is_source: bool = False,
         meta_data: Optional[dict] = None
     ) -> None:
         """Constructor method
@@ -45,9 +41,6 @@ class Event:
         self.model = model
         self.in_group = in_group
         self.out_group = out_group
-        if is_source and in_group:
-            raise RuntimeError("Cannot have flow into source")
-        self.is_source = is_source
         self.meta_data = meta_data
         self.set_flow_constraint()
 
@@ -63,9 +56,6 @@ class Event:
         if self.in_group and self.out_group:
             # flow conservation
             self.model.Add(self.in_group.variable == self.out_group.variable)
-        elif self.out_group and self.is_source:
-            # source constraint
-            self.model.Add(self.out_group.variable == 1)
 
     def set_groups_event(self, group: Optional[Group]) -> None:
         """Method to set the Event instance of the input Group to the instance
@@ -116,6 +106,28 @@ class Event:
         self._out_group = group
         self.set_groups_event(self._out_group)
 
+    @property
+    def is_start(self) -> bool:
+        """Property indicating is start point (out group with no in group) in
+        the graph i.e. the graph can start with this event.
+
+        :return: Boolean value indicating if the :class:`Event` instance is a
+        start point.
+        :rtype: `bool`
+        """
+        return bool(self.out_group and not self.in_group)
+
+    @property
+    def is_end(self) -> bool:
+        """Property indicating is end point (in group with no out group) in
+        the graph i.e. the graph can end with this event.
+
+        :return: Boolean value indicating if the :class:`Event` instance is an
+        end point.
+        :rtype: `bool`
+        """
+        return bool(self.in_group and not self.out_group)
+
 
 class LoopEvent(Event):
     """LoopEvent subclass of :class:`Event`. Holds a sub_graph as a
@@ -133,9 +145,6 @@ class LoopEvent(Event):
     :type in_group: :class:`Optional`[:class:`Group`], optional
     :param out_group: The :class:`Group`, defaults to `None`
     :type out_group: :class:`Optional`[:class:`Group`], optional
-    :param is_source: Boolean signifying if the instance is a source Event
-    (`True`) or not (`False`), defaults to `False`
-    :type is_source: `bool`, optional
     :param meta_data: A dictionary of meta-data relating to the Event,
      defaults to `None`
     :type meta_data: :class:`Optional`[`dict`], optional
@@ -148,12 +157,11 @@ class LoopEvent(Event):
         sub_graph: Graph,
         in_group: Optional[Group] = None,
         out_group: Optional[Group] = None,
-        is_source: bool = False,
         meta_data: Optional[dict] = None
     ) -> None:
         """Constructor method
         """
-        super().__init__(model, in_group, out_group, is_source, meta_data)
+        super().__init__(model, in_group, out_group, meta_data)
         self.sub_graph = sub_graph
 
     @property

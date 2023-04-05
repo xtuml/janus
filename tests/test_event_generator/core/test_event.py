@@ -70,11 +70,12 @@ class TestSetFlowConstraint:
             assert variables_to_equal[i] == solution["group_in"]
             assert solution["group_in"] == solution["group_out"]
 
-    def test_source_constraint(self, model: CpModel, solver: CpSolver) -> None:
-        """Test source constraint when only a :class:`Group` exiting the Event
-        is present. The Event must attribute `is_source = True`.
-        There should be one solution satisfying flow:
+    def test_start_point(self, model: CpModel, solver: CpSolver) -> None:
+        """Test start constraints when only a :class:`Group` exiting the Event
+        is present. Test that the event property is_start evaluates to `True`.
+        There should be two solutions:
         * group_out = 1
+        * group_out = 0
 
         :param model: CP-SAT model
         :type model: :class:`CpModel`
@@ -87,14 +88,61 @@ class TestSetFlowConstraint:
             group_variables=[],
             is_into_event=False
         )
-        _ = Event(model=model, out_group=group_out, is_source=True)
+        event = Event(model=model, out_group=group_out)
         solutions = solve_model(
             model=model,
             solver=solver,
             variables=[group_out.variable]
         )
-        assert len(solutions) == 1
-        assert solutions[0]["group_out"] == 1
+        # check that Event is_start
+        assert event.is_start
+        # sort solutions so that the solution with all variables equal to 0 is
+        # first and all variables equal to 1 is second
+        sorted_solutions = sorted(
+            solutions.values(),
+            key=lambda x: x["group_out"]
+        )
+        variables_to_equal = [0, 1]
+        assert len(sorted_solutions) == 2
+        for i, solution in enumerate(sorted_solutions):
+            assert variables_to_equal[i] == solution["group_out"]
+
+    def test_end_point(self, model: CpModel, solver: CpSolver) -> None:
+        """Test start constraints when only a :class:`Group` entering the Event
+        is present. Test that the event property is_end evaluates to `True`.
+        There should be two solutions:
+        * group_in = 1
+        * group_in = 0
+
+        :param model: CP-SAT model
+        :type model: :class:`CpModel`
+        :param solver: CP-SAT solver
+        :type solver: :class:`CpSolver`
+        """
+        group_in = Group(
+            model=model,
+            uid="group_in",
+            group_variables=[],
+            is_into_event=False
+        )
+        event = Event(model=model, in_group=group_in)
+        solutions = solve_model(
+            model=model,
+            solver=solver,
+            variables=[group_in.variable]
+        )
+        # check that Event is_end
+        assert event.is_end
+        # sort solutions so that the solution with all variables equal to 0 is
+        # first and all variables equal to 1 is second
+        sorted_solutions = sorted(
+            solutions.values(),
+            key=lambda x: x["group_in"]
+        )
+        variables_to_equal = [0, 1]
+        assert len(sorted_solutions) == 2
+        for i, solution in enumerate(sorted_solutions):
+            assert variables_to_equal[i] == solution["group_in"]
 
 
 class TestLoopEvent:

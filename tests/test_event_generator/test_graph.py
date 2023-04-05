@@ -5,10 +5,11 @@ Tests for graph.py
 from copy import deepcopy
 
 import pytest
-from ortools.sat.python.cp_model import CpModel
+from ortools.sat.python.cp_model import CpModel, CpSolver
 from test_event_generator.graph import Graph
 from test_event_generator.core.event import Event, LoopEvent
-from test_event_generator.core.group import ORGroup, XORGroup, ANDGroup
+from test_event_generator.core.group import ORGroup, XORGroup, ANDGroup, Group
+from test_event_generator.utils.utils import solve_model
 
 
 class TestSelectGroup:
@@ -407,12 +408,12 @@ class TestParseGraphDef:
                 assert parsed_graph.groups[(event_uid, "out")] == group_out
 
     @staticmethod
-    def test_event_is_source(
+    def test_event_is_start(
         parsed_graph: Graph,
         graph_def: dict
     ) -> None:
-        """Test that an event is correctly identified as a source if it only
-        has an "out" group.
+        """Test that an event is correctly identified as a start point if it
+        only has an "out" group.
         :class:`Graph` instance.
 
         :param parsed_graph: A graph instance containing a parsed graph
@@ -423,7 +424,209 @@ class TestParseGraphDef:
         """
         for event_uid, event_def in graph_def.items():
             if not event_def["group_in"] and event_def["group_out"]:
-                assert parsed_graph.events[event_uid].is_source
+                assert parsed_graph.events[event_uid].is_start
+
+    @staticmethod
+    def test_event_is_end(
+        parsed_graph: Graph,
+        graph_def: dict
+    ) -> None:
+        """Test that an event is correctly identified as an end point if it
+        only has an "in" group.
+        :class:`Graph` instance.
+
+        :param parsed_graph: A graph instance containing a parsed graph
+        definition.
+        :type parsed_graph: :class:`Graph`
+        :param graph_def: Standardised graph defintion.
+        :type graph_def: `dict`
+        """
+        for event_uid, event_def in graph_def.items():
+            if not event_def["group_out"] and event_def["group_in"]:
+                assert parsed_graph.events[event_uid].is_end
+
+
+class TestCreateEvent:
+    """Tests :class:`Graph`.`create_event` method.
+    """
+    @staticmethod
+    def test_create_event_class(
+        model: CpModel
+    ) -> None:
+        """Test an :class:`Event` instance is created and not a
+        :class:`LoopEvent` instance.
+
+        :param model: CP-SAT model.
+        :type model: :class:`CpModel`
+        """
+        event = Graph.create_event(
+            model=model
+        )
+        assert isinstance(event, Event)
+        assert not isinstance(event, LoopEvent)
+
+    @staticmethod
+    def test_create_loop_event_class(
+        model: CpModel,
+        loop_sub_graph_def: dict
+    ) -> None:
+        """Test that :class:`LoopEvent` instance is created when providing a
+        loop sub graph definition.
+
+        :param model: CP-SAT model.
+        :type model: :class:`CpModel`
+        :param loop_sub_graph_def: Standardised graph definition.
+        :type loop_sub_graph_def: `dict`
+        """
+        event = Graph.create_event(
+            model=model,
+            loop_graph=loop_sub_graph_def
+        )
+        assert isinstance(event, LoopEvent)
+
+    @staticmethod
+    def test_is_start_event(
+        model: CpModel
+    ) -> None:
+        """Test that property `is_start` evaluates to `True` if and only if a
+        :class:`Group` instance is provided to the parameter `group_out`.
+
+        :param model: CP-SAT model.
+        :type model: :class:`CpModel`
+        """
+        event = Graph.create_event(
+            model=model,
+            group_out=Group(
+                model=model,
+                uid="group_out",
+                group_variables=[],
+                is_into_event=False
+            )
+        )
+        assert event.is_start
+
+    @staticmethod
+    def test_is_end_event(
+        model: CpModel
+    ) -> None:
+        """Test that property `is_end` evaluates to `True` if and only if a
+        :class:`Group` instance is provided to the parameter `group_in`.
+
+        :param model: CP-SAT model.
+        :type model: :class:`CpModel`
+        """
+        event = Graph.create_event(
+            model=model,
+            group_in=Group(
+                model=model,
+                uid="group_in",
+                group_variables=[],
+                is_into_event=False
+            )
+        )
+        assert event.is_end
+
+    @staticmethod
+    def test_is_not_start_or_end_event(
+        model: CpModel
+    ) -> None:
+        """Test that property `is_end` evaluates to `False` and `is_start`
+        evaluates to `False` if separate :class:`Group` instances are provided
+        to the parameters `group_in` and `group_out`, rerspectively.
+
+        :param model: CP-SAT model.
+        :type model: :class:`CpModel`
+        """
+        event = Graph.create_event(
+            model=model,
+            group_in=Group(
+                model=model,
+                uid="group_in",
+                group_variables=[],
+                is_into_event=False
+            ),
+            group_out=Group(
+                model=model,
+                uid="group_out",
+                group_variables=[],
+                is_into_event=False
+            )
+        )
+        assert not event.is_start
+        assert not event.is_end
+
+    @staticmethod
+    def test_meta_data(
+        model: CpModel
+    ) -> None:
+        """Test that meta data is added to the :class:`Event` instance
+        correctly.
+
+        :param model: CP-SAT model.
+        :type model: :class:`CpModel`
+        """
+        event = Graph.create_event(
+            model=model,
+            meta_data={"some_data": 2}
+        )
+        assert event.meta_data
+        meta_data_keys = list(event.meta_data.keys())
+        assert len(meta_data_keys) == 1
+        assert meta_data_keys[0] == "some_data"
+        assert event.meta_data["some_data"] == 2
+
+
+def test_set_start_point_constraint(
+    model: CpModel,
+    solver: CpSolver
+) -> None:
+    """Test that :class:`Graph`.`set_start_points_constraint` is producing the
+    correct results. There should be `2^n - 1` solutions (n being the number
+    of group variables) which is the number of combinations for choosing the
+    values 0 or 1 for n different variables minus 1 so that not all of the
+    variables have the value 0.
+
+    :param model: CP-SAT model.
+    :type model: :class:`CpModel`
+    :param solver: CP-SAT solver.
+    :type solver: :class:`CpSolver`
+    """
+    group_variables: list[Group] = []
+    for i in range(3):
+        group_variables.append(
+            Group(
+                model=model,
+                uid=str(i),
+                group_variables=[],
+                is_into_event=False
+            ).variable
+        )
+    Graph.set_start_point_constraint(
+        model=model,
+        group_variables=group_variables
+    )
+    solutions = solve_model(
+        model=model,
+        solver=solver,
+        variables=group_variables
+    )
+    assert len(solutions) == 7
+    sorted_solutions = sorted(
+        solutions.values(),
+        key=lambda x: x["0"] + 0.1 * x["1"] + 0.01 * x["2"]
+    )
+    expected_solutions = [
+        [0, 0, 1], [0, 1, 0], [0, 1, 1],
+        [1, 0, 0], [1, 0, 1], [1, 1, 0],
+        [1, 1, 1]
+    ]
+    for expected_solution, test_solution in zip(
+        expected_solutions, sorted_solutions
+    ):
+        assert all(
+            test_solution[str(i)] == variable_value
+            for i, variable_value in enumerate(expected_solution)
+        )
 
 
 class TestSolve:
@@ -582,8 +785,8 @@ class TestLoopEvents(TestLoopFixtures):
             parsed_graph=loop_event_sub_graph,
             graph_def=loop_sub_graph_def
         )
-        # test source events
-        TestParseGraphDef.test_event_is_source(
+        # test start events
+        TestParseGraphDef.test_event_is_start(
             parsed_graph=loop_event_sub_graph,
             graph_def=loop_sub_graph_def
         )
