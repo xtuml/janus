@@ -468,19 +468,19 @@ class TestCreateEvent:
     @staticmethod
     def test_create_loop_event_class(
         model: CpModel,
-        loop_sub_graph_def: dict
+        graph_def: dict
     ) -> None:
         """Test that :class:`LoopEvent` instance is created when providing a
         loop sub graph definition.
 
         :param model: CP-SAT model.
         :type model: :class:`CpModel`
-        :param loop_sub_graph_def: Standardised graph definition.
-        :type loop_sub_graph_def: `dict`
+        :param graph_def: Standardised graph definition.
+        :type graph_def: `dict`
         """
         event = Graph.create_event(
             model=model,
-            loop_graph=loop_sub_graph_def
+            loop_graph=graph_def
         )
         assert isinstance(event, LoopEvent)
 
@@ -756,39 +756,39 @@ class TestLoopEvents(TestLoopFixtures):
     @staticmethod
     def test_loop_event_sub_graph_correct(
         loop_event: LoopEvent,
-        loop_sub_graph_def: dict[str, dict],
-        sub_graph_edges: list[str]
+        graph_def: dict[str, dict],
+        edges: list[str]
     ) -> None:
         """Tests the sub graph has been correctly formed from the parsed graph
         definition.
 
         :param loop_event: The :class:`LoopEvent`
         :type loop_event: :class:`LoopEvent`
-        :param loop_sub_graph_def: The graph definition for the loop subgraph.
-        :type loop_sub_graph_def: `dict`[`str`, `dict`]
-        :param sub_graph_edges: The edge uids in the loop subgraph.
-        :type sub_graph_edges: `list`[`str`]
+        :param graph_def: The graph definition for the loop subgraph.
+        :type graph_def: `dict`[`str`, `dict`]
+        :param edges: The edge uids in the loop subgraph.
+        :type edges: `list`[`str`]
         """
         loop_event_sub_graph: Graph = loop_event.sub_graph
         # test edges added correctly
         TestParseGraphDef.test_edges_added_correctly(
             loop_event_sub_graph,
-            sub_graph_edges
+            edges
         )
         # test events added correctly
         TestParseGraphDef.test_events_added_correctly(
             parsed_graph=loop_event_sub_graph,
-            graph_def=loop_sub_graph_def
+            graph_def=graph_def
         )
         # test events contain correct groups
         TestParseGraphDef.test_events_contain_correct_groups(
             parsed_graph=loop_event_sub_graph,
-            graph_def=loop_sub_graph_def
+            graph_def=graph_def
         )
         # test start events
         TestParseGraphDef.test_event_is_start(
             parsed_graph=loop_event_sub_graph,
-            graph_def=loop_sub_graph_def
+            graph_def=graph_def
         )
 
 
@@ -799,15 +799,15 @@ class TestSolveLoopSubGraphs(TestLoopFixtures):
     @pytest.fixture
     def loop_event(
         model: CpModel,
-        loop_sub_graph_def: dict[str, dict]
+        graph_def: dict[str, dict]
     ) -> LoopEvent:
         """PyTest fixture to define :class:`LoopEvent`.
 
         :param model: CP-SAT model
         :type model: :class`CpModel`
-        :param loop_sub_graph_def: Standardised graph definition for the loop
+        :param graph_def: Standardised graph definition for the loop
         sub graph.
-        :type loop_sub_graph_def: `dict`[`str`, `dict`]
+        :type graph_def: `dict`[`str`, `dict`]
         :return: Returns the loop event with sub graph definied by the input
         graph definition.
         :rtype: :class:`LoopEvent`
@@ -817,7 +817,7 @@ class TestSolveLoopSubGraphs(TestLoopFixtures):
             model=model,
             sub_graph=sub_graph
         )
-        event.set_graph_with_graph_def(loop_sub_graph_def)
+        event.set_graph_with_graph_def(graph_def)
         return event
 
     @staticmethod
@@ -883,7 +883,7 @@ class TestSolveLoopSubGraphs(TestLoopFixtures):
     @staticmethod
     def test_solve_loop_events_sub_graph_correct(
         events_list: list[Event | LoopEvent],
-        expected_solutions_sub_graph: list[dict[str, int]]
+        expected_solutions: list[dict[str, int]]
     ) -> None:
         """Tests :class:`Graph`.`solve_loop_events_sub_graphs` gives the
         corrrect solutions.
@@ -891,8 +891,8 @@ class TestSolveLoopSubGraphs(TestLoopFixtures):
         :param events_list: Mixed list of :class:`Event`'s and
         :class:`LoopEvent`'s.
         :type events_list: `list`[:class:`Event` | :class:`LoopEvent`]
-        :param expected_solutions_sub_graph: List of expected solutions.
-        :type expected_solutions_sub_graph: `list`[`dict`[`str`, `int`]]
+        :param expected_solutions: List of expected solutions.
+        :type expected_solutions: `list`[`dict`[`str`, `int`]]
         """
         filtered_events = Graph.filter_events(events_list)
         Graph.solve_loop_events_sub_graphs(filtered_events)
@@ -900,7 +900,7 @@ class TestSolveLoopSubGraphs(TestLoopFixtures):
             assert len(event.sub_graph.solutions) == 2
             TestSolve.test_solve_sols_correct(
                 parsed_graph=event.sub_graph,
-                expected_solutions=expected_solutions_sub_graph
+                expected_solutions=expected_solutions
             )
 
     @staticmethod
@@ -927,7 +927,7 @@ class TestSolveLoopSubGraphs(TestLoopFixtures):
     @staticmethod
     def test_solve_graph_with_loop_sub_graph(
         parsed_graph_with_loop: Graph,
-        expected_solutions_sub_graph: list[dict[str, int]]
+        expected_solutions: list[dict[str, int]]
     ) -> None:
         """Tests that the solution to the sub graph of the :class:`LoopEvent`
         in the main :class:`Graph` with loop event is correct.
@@ -935,8 +935,8 @@ class TestSolveLoopSubGraphs(TestLoopFixtures):
         :param parsed_graph_with_loop: A :class:`Graph` instance that has
         parsed a standardised graph definition.
         :type parsed_graph_with_loop: :class:`Graph`
-        :param expected_solutions_sub_graph: The expected solutions.
-        :type expected_solutions_sub_graph: `list`[`dict`[`str`, `int`]]
+        :param expected_solutions: The expected solutions.
+        :type expected_solutions: `list`[`dict`[`str`, `int`]]
         """
         parsed_graph_with_loop.solve()
         assert len(
@@ -944,5 +944,5 @@ class TestSolveLoopSubGraphs(TestLoopFixtures):
         ) == 2
         TestSolve.test_solve_sols_correct(
             parsed_graph=parsed_graph_with_loop.events["Event_Loop"].sub_graph,
-            expected_solutions=expected_solutions_sub_graph
+            expected_solutions=expected_solutions
         )

@@ -192,28 +192,7 @@ class LoopEvent(Event):
         sub graph.
         :type graph_def: `dict`
         """
-        self.check_has_loop_start_end(graph_def)
         self.sub_graph.parse_graph_def(graph_def)
-
-    @staticmethod
-    def check_has_loop_start_end(graph_def: dict[str, dict]) -> None:
-        """Check a graph definition for a Start and End event.
-
-        :param graph_def: Standardised graph definition.
-        :type graph_def: `dict`[`str`, `dict`]
-        :raises :class:`RuntimeError`: Raises Exception if there is not a field
-        "StartEvent" in the graph definition.
-        :raises :class:`RuntimeError`: Raises Exception if there is not a field
-        "EndEvent" in the graph definition.
-        """
-        if "StartEvent" not in graph_def:
-            raise RuntimeError(
-                "Graph definition requires an event named StartEvent"
-            )
-        if "EndEvent" not in graph_def:
-            raise RuntimeError(
-                "Graph definition requires an event named EndEvent"
-            )
 
     def solve_sub_graph(self) -> None:
         """Method to solve the instance's sub graph.
