@@ -299,7 +299,28 @@ class LoopEventSolution(EventSolution):
 
 
 class GraphSolution:
-    """_summary_
+    """Class that holds a sequence of :class:`EventSolution`'s that are
+    held in an event dictionary at a unique key. :class:`EventSolution`'s may
+    be sub-categorised - given information in the attributes - into:
+
+    * start_events
+    * end_events
+    * loop_events
+    * branch_points
+    * break_points
+
+    Within these dictionaries the :class:`EventSolution` holds the same key as
+    in the events dictionary.
+
+    An example of a sequence of :class:`EventSolution` that may be held is:
+
+    (Start)->(Middle)->(End)
+
+    Here:
+    * the post event of (Start) is (Middle)
+    * the previous event of (Middle) is (Start) and the post event is (End)
+    * the previous event of (End) is (Middle)
+
     """
     def __init__(
         self,
