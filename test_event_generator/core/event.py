@@ -8,6 +8,7 @@ from typing import Optional, TYPE_CHECKING
 from ortools.sat.python.cp_model import CpModel
 if TYPE_CHECKING:
     from .group import Group
+    from .edge import Edge
     from ..graph import Graph
 
 
@@ -18,6 +19,9 @@ class Event:
     :param model: The ortools CP-SAT model instance to
     add the edge as a variable
     :type model: :class:`CpModel`
+    :param uid: The unique id of the :class:`Event` instance, defaults to
+    `None`
+    :type uid: `str`, optional
     :param in_group: The :class:`Group` instance entering the Event, defaults
     to `None`
     :type in_group: :class:`Optional`[:class:`Group`], optional
@@ -32,13 +36,17 @@ class Event:
     def __init__(
         self,
         model: CpModel,
+        uid: Optional[str] = None,
         in_group: Optional[Group] = None,
         out_group: Optional[Group] = None,
-        meta_data: Optional[dict] = None
+        meta_data: dict = {}
     ) -> None:
         """Constructor method
         """
         self.model = model
+        self._in_edges: dict[str, Edge] = {}
+        self._out_edges: dict[str, Edge] = {}
+        self.uid = uid
         self.in_group = in_group
         self.out_group = out_group
         self.meta_data = meta_data
@@ -128,6 +136,44 @@ class Event:
         """
         return bool(self.in_group and not self.out_group)
 
+    @property
+    def in_edges(self) -> dict[str, Edge]:
+        """Property getter for the :class:`Edge`'s entering the :class:`Event`
+        instance.
+
+        :return: Dictionary of the Edges entering the Event.
+        :rtype: `dict`[`str`, :class:`Edge`]
+        """
+        return self._in_edges
+
+    def set_in_edges(self, edge: Edge) -> None:
+        """Setter to add an :class:`Edge` to the property of incomning
+        :class:`Edge`'s.
+
+        :param edge: An :class:`Edge` entering the :class:`Event` instance.
+        :type edge: :class:`Edge`.
+        """
+        self._in_edges[edge.uid] = edge
+
+    @property
+    def out_edges(self) -> dict[str, Edge]:
+        """Property getter for the :class:`Edge`'s exiting the :class:`Event`
+        instance.
+
+        :return: Dictionary of the Edges exiting the Event.
+        :rtype: `dict`[`str`, :class:`Edge`]
+        """
+        return self._out_edges
+
+    def set_out_edges(self, edge: Edge) -> None:
+        """Setter to add an :class:`Edge` to the property of exiting
+        :class:`Edge`'s.
+
+        :param edge: An :class:`Edge` exiting the :class:`Event` instance.
+        :type edge: :class:`Edge`.
+        """
+        self._out_edges[edge.uid] = edge
+
 
 class LoopEvent(Event):
     """LoopEvent subclass of :class:`Event`. Holds a sub_graph as a
@@ -155,13 +201,14 @@ class LoopEvent(Event):
         self,
         model: CpModel,
         sub_graph: Graph,
+        uid: Optional[str] = None,
         in_group: Optional[Group] = None,
         out_group: Optional[Group] = None,
-        meta_data: Optional[dict] = None
+        meta_data: dict = {}
     ) -> None:
         """Constructor method
         """
-        super().__init__(model, in_group, out_group, meta_data)
+        super().__init__(model, uid, in_group, out_group, meta_data)
         self.sub_graph = sub_graph
 
     @property

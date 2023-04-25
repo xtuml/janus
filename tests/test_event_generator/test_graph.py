@@ -9,7 +9,16 @@ from ortools.sat.python.cp_model import CpModel, CpSolver
 from test_event_generator.graph import Graph
 from test_event_generator.core.event import Event, LoopEvent
 from test_event_generator.core.group import ORGroup, XORGroup, ANDGroup, Group
+from test_event_generator.solutions import (
+    EventSolution,
+    LoopEventSolution,
+    GraphSolution
+)
 from test_event_generator.utils.utils import solve_model
+from tests.utils import (
+    check_length_attr,
+    check_solution_correct
+)
 
 
 class TestSelectGroup:
@@ -215,7 +224,8 @@ class TestCreateSubGroups:
             )
         # check that sub group name is correct
         assert (
-            graph.groups[("Event_A", "out", "1")].variable.Name() ==
+            graph.groups[("Event_A", "out", "1")].variable.Name()
+        ) == (
             ".".join(("Event_A", "out", "1"))
         )
 
@@ -612,7 +622,7 @@ def test_set_start_point_constraint(
     )
     assert len(solutions) == 7
     sorted_solutions = sorted(
-        solutions.values(),
+        solutions,
         key=lambda x: x["0"] + 0.1 * x["1"] + 0.01 * x["2"]
     )
     expected_solutions = [
@@ -636,7 +646,7 @@ class TestSolve:
     def test_convert_to_event_solutions(
         parsed_graph: Graph,
         expected_solutions: list[dict[str, int]],
-        expected_group_solutions: dict[int, dict[str, int]]
+        expected_group_solutions: list[dict[str, int]]
     ) -> None:
         """Tests :class:`Graph`.`convert_to_event_solutions` and ensure the
         correct Event solutions are output from the given input group
@@ -649,7 +659,7 @@ class TestSolve:
         :type expected_solutions: `list`[`dict`[`str`, `int`]]
         :param expected_group_solutions: The group solutions to convert to
         event solutions.
-        :type expected_group_solutions: `dict`[`int`, `dict`[`str`, `int`]]
+        :type expected_group_solutions: `list`[`dict`[`str`, `int`]]
         """
         converted_solutions = parsed_graph.convert_to_event_solutions(
             expected_group_solutions
@@ -674,7 +684,7 @@ class TestSolve:
         :type parsed_graph: :class:`Graph`
         """
         parsed_graph.solve()
-        assert len(parsed_graph.solutions) == 2
+        assert len(parsed_graph.solutions["Event"]) == 2
 
     @staticmethod
     def test_solve_sols_correct(
@@ -691,7 +701,7 @@ class TestSolve:
         :type expected_solutions: `list`[`dict`[`str`, `int`]]
         """
         parsed_graph.solve()
-        actual_solutions = parsed_graph.solutions
+        actual_solutions = parsed_graph.solutions["Event"]
         # sort actual solutions by total sum of values to order like expected
         actual_solutions = sorted(
             actual_solutions,
@@ -897,7 +907,7 @@ class TestSolveLoopSubGraphs(TestLoopFixtures):
         filtered_events = Graph.filter_events(events_list)
         Graph.solve_loop_events_sub_graphs(filtered_events)
         for event in filtered_events:
-            assert len(event.sub_graph.solutions) == 2
+            assert len(event.sub_graph.solutions["Event"]) == 2
             TestSolve.test_solve_sols_correct(
                 parsed_graph=event.sub_graph,
                 expected_solutions=expected_solutions
@@ -918,7 +928,7 @@ class TestSolveLoopSubGraphs(TestLoopFixtures):
         :type expected_solutions_graph_loop_event: `list`[`dict`[`str`, `int`]]
         """
         parsed_graph_with_loop.solve()
-        assert len(parsed_graph_with_loop.solutions) == 1
+        assert len(parsed_graph_with_loop.solutions["Event"]) == 1
         TestSolve.test_solve_sols_correct(
             parsed_graph=parsed_graph_with_loop,
             expected_solutions=expected_solutions_graph_loop_event
@@ -940,9 +950,826 @@ class TestSolveLoopSubGraphs(TestLoopFixtures):
         """
         parsed_graph_with_loop.solve()
         assert len(
-            parsed_graph_with_loop.events["Event_Loop"].sub_graph.solutions
+            parsed_graph_with_loop.events["Event_Loop"].sub_graph.solutions[
+                "Event"
+            ]
         ) == 2
         TestSolve.test_solve_sols_correct(
             parsed_graph=parsed_graph_with_loop.events["Event_Loop"].sub_graph,
             expected_solutions=expected_solutions
+        )
+
+
+@pytest.fixture()
+def loop_event_graph_solutions() -> dict[str, list[GraphSolution]]:
+    """Fixture representing a loop event dictionary
+    containing the following two graph solutions:
+
+    * (Event_A)-(Event_B)
+
+    *
+              ->(Event_C)-V
+    (Event_A)-|           |->(Event_E)
+              ->(Event_D)-^
+
+
+    :return: Returns a dictionary containing a list of :class:`GraphSolution`'s
+    :rtype: `dict`[`str`, `list`[:class:`GraphSolution`]]
+    """
+    event_A = EventSolution(
+        meta_data={"EventType": "Event_A"}
+    )
+    event_B = EventSolution(
+        meta_data={"EventType": "Event_B"}
+    )
+    event_C = EventSolution(
+        meta_data={"EventType": "Event_C"}
+    )
+    event_D = EventSolution(
+        meta_data={"EventType": "Event_D"}
+    )
+    event_E = EventSolution(
+        meta_data={"EventType": "Event_E"}
+    )
+    # solution 1
+    event_A_1 = deepcopy(event_A)
+    event_B_1 = deepcopy(event_B)
+    event_A_1.add_post_event(event_B_1)
+    event_A_1.add_to_connected_events()
+    graph_solution_1 = GraphSolution()
+    graph_solution_1.parse_event_solutions(
+        [event_A_1, event_B_1]
+    )
+    # solution 2
+    event_A_2 = deepcopy(event_A)
+    event_C_2 = deepcopy(event_C)
+    event_D_2 = deepcopy(event_D)
+    event_E_2 = deepcopy(event_E)
+    event_A_2.add_post_event(event_C_2)
+    event_A_2.add_post_event(event_D_2)
+    event_A_2.add_to_connected_events()
+    event_E_2.add_prev_event(event_C_2)
+    event_E_2.add_prev_event(event_D_2)
+    event_E_2.add_to_connected_events()
+    graph_solution_2 = GraphSolution()
+    graph_solution_2.parse_event_solutions(
+        [event_A_2, event_C_2, event_D_2, event_E_2]
+    )
+    return {
+        "Event_Loop": [
+            graph_solution_1,
+            graph_solution_2
+        ]
+    }
+
+
+@pytest.fixture
+def event_solutions() -> dict[str, EventSolution]:
+    """Fixture to create a dictionary of :class:`EventSolution`'s
+
+    :return: Return a dictionary of :class:`EventSolution`'s
+    :rtype: `dict`[`str`, :class:`EventSolution`]
+    """
+    return {
+        "Event_A": EventSolution(
+            meta_data={"EventType": "Event_A"}
+        ),
+        "Event_C": EventSolution(
+            meta_data={"EventType": "Event_C"}
+        ),
+        "Event_D": EventSolution(
+            meta_data={"EventType": "Event_D"}
+        ),
+        "Event_E": EventSolution(
+            meta_data={"EventType": "Event_E"}
+        ),
+    }
+
+
+@pytest.fixture
+def graph_solution(
+    loop_event_graph_solutions: dict[str, EventSolution]
+) -> GraphSolution:
+    """Fixture to provide a :class:`GraphSolution` containing a
+    :class:`LoopEventSolution` with two sub-graph solutions. The parent graph
+    is:
+
+    * (Event_X)->(Event_Loop)->(Event_Y)
+
+    The sub-graph solutions are:
+
+    * (Event_A)-(Event_B)
+
+
+    *         ->(Event_C)-V
+    (Event_A)-|           |->(Event_E)
+              ->(Event_D)-^
+
+    :param loop_event_graph_solutions: Fixture providing a dictionary of the
+    list of :class:`GraphSolution`'s
+    :type loop_event_graph_solutions: `dict`[`str`, :class:`EventSolution`]
+    :return: Returns a :class:`GraphSolution` wtih 3 events one a loop event
+    with 2 sub-graph solutions
+    :rtype: :class:`GraphSolution`
+    """
+    event_X = EventSolution(
+        meta_data={"EventType": "Event_X"}
+    )
+    event_loop = LoopEventSolution(
+        graph_solutions=loop_event_graph_solutions["Event_Loop"],
+        meta_data={"EventType": "Event_Loop"}
+    )
+    event_Y = EventSolution(
+        meta_data={"EventType": "Event_Y"}
+    )
+    event_loop.add_prev_event(event_X)
+    event_loop.add_post_event(event_Y)
+    event_loop.add_to_connected_events()
+    graph = GraphSolution()
+    graph.parse_event_solutions(
+        [event_X, event_loop, event_Y]
+    )
+    return graph
+
+
+class TestGraphGenerateSolutions(TestLoopFixtures):
+    """Groups of tests for the generating of :class:`GraphSolution`'s from
+    found integer solutions for :class:`Graph`. Sub-classes
+    :class:`TestLoopFixtures` to gain the fixtures provided by the parent class
+    """
+    @staticmethod
+    def test_get_event_solution_objects_no_loop(
+        parsed_graph: Graph,
+        expected_solutions: list[dict[str, int]]
+    ) -> None:
+        """Tests the method :class:`Graph`.`get_event_solution_objects`
+        without a loop
+
+        :param parsed_graph: Fixture providing a pre-parsed :class:`Graph`
+        :type parsed_graph: :class:`Graph`
+        :param expected_solutions: List of expected solutions to the parsed
+        :class:`Graph`
+        :type expected_solutions: `list`[`dict`[`str`, `int`]]
+        """
+        event_solutions = Graph.get_event_solution_objects(
+            event_solutions=expected_solutions[0],
+            events=parsed_graph.events,
+            loop_events_graph_solutions={}
+        )
+        # There should be 2 EventSolution's in the dictionary
+        assert len(event_solutions) == 2
+        # all of the instances within the dictionary shoul only be
+        # EventSolution with no LoopEventSolution's
+        assert all(
+            isinstance(event_solution, EventSolution)
+            and not isinstance(event_solution, LoopEventSolution)
+            for event_solution in event_solutions.values()
+        )
+
+    @staticmethod
+    def test_get_event_solution_objects_with_loop(
+        parsed_graph_with_loop: Graph,
+        expected_solutions_graph_loop_event: list[dict[str, int]],
+        loop_event_graph_solutions: dict[str, list[GraphSolution]]
+    ) -> None:
+        """Tests the method :class:`Graph`.`get_event_solution_objects`
+        with a :class:`LoopEvent`
+
+        :param parsed_graph_with_loop: Fixture providing a parsed
+        :class:`Graph` containing a :class:`LoopEvent` with a sub-graph
+        :type parsed_graph_with_loop: :class:`Graph`
+        :param expected_solutions_graph_loop_event: Fixture providing expected
+        solutions for the :class:`Graph` with :class:`LoopEvent`
+        :type expected_solutions_graph_loop_event: `list`[`dict`[`str`, `int`]]
+        :param loop_event_graph_solutions: Fixture providing a dictionary of
+        list of :class:`GraphSolution`'s for the :class:`LoopEvent`'s sub-graph
+        :type loop_event_graph_solutions: `dict`[`str`,
+        `list`[:class:`GraphSolution`]]
+        """
+        event_solutions = Graph.get_event_solution_objects(
+            event_solutions=expected_solutions_graph_loop_event[0],
+            events=parsed_graph_with_loop.events,
+            loop_events_graph_solutions=loop_event_graph_solutions
+        )
+        # there should be 3 EventSolution's in the dictionary
+        assert len(event_solutions) == 3
+        # check that the instances of EventSolution are correct
+        assert isinstance(event_solutions["Event_Loop"], LoopEventSolution)
+        assert isinstance(event_solutions["Event_X"], EventSolution)
+        assert isinstance(event_solutions["Event_Y"], EventSolution)
+
+    @staticmethod
+    def check_connected_events_correct(
+        event_solution: EventSolution,
+        event_solutions_in_prev: list[EventSolution],
+        event_solutions_in_post: list[EventSolution]
+    ) -> None:
+        """Helper function to check that a :class:`EventSolution` contains the
+        correct previous and post :class:`EventSolution`'s
+
+        :param event_solution: The :class:`EventSolution` to check
+        :type event_solution: :class:`EventSolution`
+        :param event_solutions_in_prev: List of :class:`EventSolution`'s that
+        should appear in the previous events
+        :type event_solutions_in_prev: `list`[:class:`EventSolution`]
+        :param event_solutions_in_post: List of :class:`EventSolution`'s that
+        should appear in the post events
+        :type event_solutions_in_post: `list`[:class:`EventSolution`]
+        """
+        # check that the len of post events is equal to the input list of post
+        # events
+        assert len(event_solution.post_events) == len(event_solutions_in_post)
+        # check that the len of previous events is equal to the input list of
+        # previous events
+        assert len(event_solution.previous_events) == len(
+            event_solutions_in_prev
+        )
+        # check that the post and previous events are correct
+        for prev_event_solution in event_solutions_in_prev:
+            assert (
+                prev_event_solution
+            ) in event_solution.previous_events
+        for post_event_solution in event_solutions_in_post:
+            assert (
+                post_event_solution
+            ) in event_solution.post_events
+
+    @staticmethod
+    def test_update_prev_events(
+        parsed_graph: Graph,
+        event_solutions: dict[str, EventSolution],
+        expected_edge_solutions: list[dict[str, int]]
+    ) -> None:
+        """Test the method :class:`Graph`.`update_connected_events`.
+        Tests updating the previous events of Event_E given the
+        edge solutions
+
+        "edge_A_B"=0,
+        "edge_A_C"=1,
+        "edge_A_D"=1,
+        "edge_C_E"=1,
+        "edge_D_E"=1
+
+        :param parsed_graph: Fixture representing a parsed :class:`Graph`
+        :type parsed_graph: :class:`Graph`
+        :param event_solutions: Dictionary of :class:`EventSolution`'s
+        :type event_solutions: `dict`[`str`, :class:`EventSolution`]
+        :param expected_edge_solutions: Fixture representing the expected list
+        of dictionaries of edge solutions for the graph
+        :type expected_edge_solutions: `list`[`dict`[`str`, `int`]]
+        """
+        event = parsed_graph.events["Event_E"]
+        Graph.update_connected_events(
+            event=event,
+            event_solution=event_solutions["Event_E"],
+            event_solutions=event_solutions,
+            edge_solutions=expected_edge_solutions[1]
+        )
+        # check that the previous events are correct
+        TestGraphGenerateSolutions.check_connected_events_correct(
+            event_solution=event_solutions["Event_E"],
+            event_solutions_in_prev=[
+                event_solutions["Event_C"],
+                event_solutions["Event_D"]
+            ],
+            event_solutions_in_post=[]
+        )
+
+    @staticmethod
+    def test_update_post_events(
+        parsed_graph: Graph,
+        event_solutions: dict[str, EventSolution],
+        expected_edge_solutions: list[dict[str, int]]
+    ) -> None:
+        """Test the method :class:`Graph`.`update_connected_events`.
+        Tests updating the post events of Event_A given the
+        edge solutions
+
+        "edge_A_B"=0,
+        "edge_A_C"=1,
+        "edge_A_D"=1,
+        "edge_C_E"=1,
+        "edge_D_E"=1
+
+        :param parsed_graph: Fixture representing a parsed :class:`Graph`
+        :type parsed_graph: :class:`Graph`
+        :param event_solutions: Dictionary of :class:`EventSolution`'s
+        :type event_solutions: `dict`[`str`, :class:`EventSolution`]
+        :param expected_edge_solutions: Fixture representing the expected list
+        of dictionaries of edge solutions for the graph
+        :type expected_edge_solutions: `list`[`dict`[`str`, `int`]]
+        """
+        event = parsed_graph.events["Event_A"]
+        Graph.update_connected_events(
+            event=event,
+            event_solution=event_solutions["Event_A"],
+            event_solutions=event_solutions,
+            edge_solutions=expected_edge_solutions[1]
+        )
+        # check that the post events are correct
+        TestGraphGenerateSolutions.check_connected_events_correct(
+            event_solution=event_solutions["Event_A"],
+            event_solutions_in_prev=[],
+            event_solutions_in_post=[
+                event_solutions["Event_C"],
+                event_solutions["Event_D"]
+            ],
+        )
+
+    @staticmethod
+    def test_update_connected_events(
+        parsed_graph: Graph,
+        event_solutions: dict[str, EventSolution],
+        expected_edge_solutions: list[dict[str, int]]
+    ) -> None:
+        """Test the method :class:`Graph`.`update_connected_events`.
+        Tests updating the post and previous events of Event_C given the
+        edge solutions
+
+        "edge_A_B"=0,
+        "edge_A_C"=1,
+        "edge_A_D"=1,
+        "edge_C_E"=1,
+        "edge_D_E"=1
+
+        :param parsed_graph: Fixture representing a parsed :class:`Graph`
+        :type parsed_graph: :class:`Graph`
+        :param event_solutions: Dictionary of :class:`EventSolution`'s
+        :type event_solutions: `dict`[`str`, :class:`EventSolution`]
+        :param expected_edge_solutions: Fixture representing the expected list
+        of dictionaries of edge solutions for the graph
+        :type expected_edge_solutions: `list`[`dict`[`str`, `int`]]
+        """
+        event = parsed_graph.events["Event_C"]
+        Graph.update_connected_events(
+            event=event,
+            event_solution=event_solutions["Event_C"],
+            event_solutions=event_solutions,
+            edge_solutions=expected_edge_solutions[1]
+        )
+        # check that the post and previous events are correct
+        TestGraphGenerateSolutions.check_connected_events_correct(
+            event_solution=event_solutions["Event_C"],
+            event_solutions_in_prev=[
+                event_solutions["Event_A"],
+            ],
+            event_solutions_in_post=[
+                event_solutions["Event_E"],
+            ],
+        )
+
+    @staticmethod
+    def test_update_connected_events_for_all_event_solutions(
+        parsed_graph: Graph,
+        event_solutions: dict[str, EventSolution],
+        expected_edge_solutions: list[dict[str, int]]
+    ) -> None:
+        """Test the method
+        :class:`Graph`.`update_connected_events_for_all_event_solutions`.
+        Tests updating the post and previous events for all events given the
+        edge solutions
+
+        "edge_A_B"=0,
+        "edge_A_C"=1,
+        "edge_A_D"=1,
+        "edge_C_E"=1,
+        "edge_D_E"=1
+
+        :param parsed_graph: Fixture representing a parsed :class:`Graph`
+        :type parsed_graph: :class:`Graph`
+        :param event_solutions: Dictionary of :class:`EventSolution`'s
+        :type event_solutions: `dict`[`str`, :class:`EventSolution`]
+        :param expected_edge_solutions: Fixture representing the expected list
+        of dictionaries of edge solutions for the graph
+        :type expected_edge_solutions: `list`[`dict`[`str`, `int`]]
+        """
+        Graph.update_connected_events_for_all_event_solutions(
+            event_solutions=event_solutions,
+            events=parsed_graph.events,
+            edge_solutions=expected_edge_solutions[1]
+        )
+        # check all post and previous events are correct
+        for (
+            event_solution, event_solutions_in_prev, event_solutions_in_post
+        ) in zip(
+            event_solutions.values(),
+            [
+                [],
+                [event_solutions["Event_A"]],
+                [event_solutions["Event_A"]],
+                [event_solutions["Event_C"], event_solutions["Event_D"]],
+            ],
+            [
+                [event_solutions["Event_C"], event_solutions["Event_D"]],
+                [event_solutions["Event_E"]],
+                [event_solutions["Event_E"]],
+                []
+            ]
+        ):
+            TestGraphGenerateSolutions.check_connected_events_correct(
+                event_solution=event_solution,
+                event_solutions_in_prev=event_solutions_in_prev,
+                event_solutions_in_post=event_solutions_in_post
+            )
+
+    @staticmethod
+    def test_process_solution_with_expanded_nested_loops_with_loops(
+        expected_solutions_graph_loop_event: list[dict[str, int]],
+        loop_event_graph_solutions: dict[str, list[GraphSolution]],
+        parsed_graph_with_loop: Graph,
+        expected_edge_solutions_graph_loop_event: dict[str, int]
+    ) -> None:
+        """Tests the method
+        :class:`Graph`.`process_solution_with_expanded_nested_loops`.
+
+        :param expected_solutions_graph_loop_event: Fixture providing the
+        expected solutions for a graph with loop event
+        :type expected_solutions_graph_loop_event: `list`[`dict`[`str`, `int`]]
+        :param loop_event_graph_solutions: Fixture providing a dictionary of
+        lists of :class:`GraphSolution`'s
+        :type loop_event_graph_solutions: `dict`[`str`,
+        `list`[:class:`GraphSolution`]]
+        :param parsed_graph_with_loop: Fixture providing a :class:`Graph` with
+        a :class:`LoopEvent` containing a sub-graph
+        :type parsed_graph_with_loop: :class:`Graph`
+        :param expected_edge_solutions_graph_loop_event: Fixture providing
+        expected edge solutions for the graph with the loop event
+        :type expected_edge_solutions_graph_loop_event: `dict`[`str`, `int`]
+        """
+        graph_solution = Graph.process_solution_with_expanded_nested_loops(
+            event_solutions=expected_solutions_graph_loop_event[0],
+            events=parsed_graph_with_loop.events,
+            loop_events_graph_solutions=loop_event_graph_solutions,
+            num_loops=2,
+            num_branches=2,
+            edge_solutions=expected_edge_solutions_graph_loop_event[0]
+        )
+        # check that the expected graph solution is correct
+        TestGraphGenerateSolutions.check_expected_graph_solution(
+            graph_solution
+        )
+
+    @staticmethod
+    def check_expected_graph_solution(
+        graph_solution: GraphSolution
+    ) -> None:
+        """Helper function to check that the :class:`GraphSolution` is correct
+
+        :param graph_solution: The :class:`GraphSolution` to be checked
+        :type graph_solution: :class:`GraphSolution`
+        """
+        # check the parent graph solutions
+        TestGraphGenerateSolutions.check_expected_parent_graph_solutions(
+            graph_solution
+        )
+        # check the sub graph solutions for the loop event
+        TestGraphGenerateSolutions.check_expected_sub_graph_expanded_solutions(
+            graph_solution.loop_events[2].expanded_solutions
+        )
+
+    @staticmethod
+    def check_expected_parent_graph_solutions(
+        graph_solution: GraphSolution
+    ) -> None:
+        """Helper function to check that the :class:`GraphSolution` graph is
+        correct.
+
+        The correct sequence should be
+
+        (Event_X)->(Event_Loop)->(Event_Y)
+
+        :param graph_solution: The :class:`GraphSolution` to be checked
+        :type graph_solution: :class:`GraphSolution`
+        """
+        # there should be 3 events with 1 start event, 1 end event and 1 loop
+        # event
+        assert check_length_attr(
+            graph_solution,
+            lens=[1, 3, 1, 1, 0, 0],
+            attrs=[
+                "start_events", "events",
+                "end_events", "loop_events",
+                "branch_points", "break_points"
+            ]
+        )
+        # check that the events are linked correctly
+        assert check_solution_correct(
+            solution=graph_solution,
+            event_types=["Event_X", "Event_Loop", "Event_Y"]
+        )
+
+    @staticmethod
+    def check_expected_sub_graph_expanded_solutions(
+        expanded_solutions: list[GraphSolution]
+    ) -> None:
+        """Helper function to check that the list of :class:`GraphSolution`
+        graph is correct for the expanded Loop event. There should be 4
+        sequences that are:
+
+        * (Event_A)->(Event_B)->(Event_A)->(Event_B)
+
+        *                               ->(Event_C)-V
+        (Event_A)->(Event_B)->(Event_A)-|           |->(Event_E)
+                                        ->(Event_D)-^
+
+        *          ->(Event_C)-V
+         (Event_A)-|           |->(Event_E)->(Event_A)->(Event_B)
+                   ->(Event_D)-^
+
+        *          ->(Event_C)-V                       ->(Event_C)-V
+         (Event_A)-|           |->(Event_E)->(Event_A)-|           |->(Event_E)
+                   ->(Event_D)-^                       ->(Event_D)-^
+
+        :param expanded_solutions: The list of :class:`GraphSolution` to be
+        checked
+        :type expanded_solutions: `list`[:class:`GraphSolution`]
+        """
+        assert expanded_solutions is not None
+        assert len(expanded_solutions) == 4
+        # check loop solutions expanded correctly (removed extra event at and
+        # fork for simplicity)
+        solution_sequences = [
+            [
+                "Event_A", "Event_B", "Event_A", "Event_B"
+            ],
+            [
+                "Event_A", "Event_B", "Event_A",
+                "Event_C", "Event_E"
+            ],
+            [
+                "Event_A", "Event_C",
+                "Event_E", "Event_A", "Event_B"
+            ],
+            [
+                "Event_A", "Event_C", "Event_E",
+                "Event_A", "Event_C", "Event_E",
+            ]
+        ]
+        # check solutions are correct
+        for solution_sequence in solution_sequences:
+            assert len([
+                True
+                for solution in (
+                    expanded_solutions
+                )
+                if check_solution_correct(
+                    solution=solution,
+                    event_types=solution_sequence
+                )
+            ]) == 1
+
+    @staticmethod
+    def test_process_all_solutions_with_expanded_nested_loops_no_loops(
+        expected_solutions: list[dict[str, int]],
+        expected_edge_solutions: list[dict[str, int]],
+        parsed_graph: Graph,
+    ) -> None:
+        """Tests the method
+        :class:`Graph`.`process_solution_with_expanded_nested_loops`.
+
+        :param expected_solutions: Fixture providing expected solutions.
+        :type expected_solutions: `list`[`dict`[`str`, `int`]]
+        :param expected_edge_solutions: Fixture providing expected edge
+        solutions
+        :type expected_edge_solutions: `list`[`dict`[`str`, `int`]]
+        :param parsed_graph:Fixture providing ` parsed :class:`Graph` for the
+        expected solutions
+        :type parsed_graph: :class:`Graph`
+        """
+        graph_solutions = (
+            Graph.process_all_solutions_with_expanded_nested_loops(
+                events_solutions=expected_solutions,
+                edges_solutions=expected_edge_solutions,
+                events=parsed_graph.events,
+                loop_events_graph_solutions={},
+                num_loops=2,
+                num_branches=2
+            )
+        )
+        # check that the genrated graph solutions are correct
+        TestGraphGenerateSolutions.check_two_solution_graph(
+            graph_solutions
+        )
+
+    @staticmethod
+    def check_two_solution_graph(
+        graph_solutions: list[GraphSolution]
+    ) -> None:
+        """Helper function to check that the list of :class:`GraphSolution` is
+        correct
+
+        :param graph_solutions: List of :class:`GraphSolution`'s found from
+        the expansion
+        :type graph_solutions: `list`[:class:`GraphSolution`]
+        """
+        # there should be 2 :class:`GraphSolution`'s in the list
+        assert len(graph_solutions) == 2
+        # check that the first sequence is correct
+        check_solution_correct(
+            solution=graph_solutions[0],
+            event_types=["Event_A", "Event_B"],
+        )
+        # check that the second sequence is correct
+        check_solution_correct(
+            solution=graph_solutions[1],
+            event_types=["Event_A", "Event_C", "Event_E"]
+        )
+
+    @staticmethod
+    def test_process_all_solutions_with_expanded_nested_loops_loops(
+        expected_solutions_graph_loop_event: list[dict[str, int]],
+        expected_edge_solutions_graph_loop_event: list[dict[str, int]],
+        parsed_graph_with_loop: Graph,
+        loop_event_graph_solutions: dict[str, list[GraphSolution]]
+    ) -> None:
+        """Tests the method
+        :class:`Graph`.`process_all_solutions_with_expanded_nested_loops` for
+        a :class:`Graph` with loops
+
+        :param expected_solutions_graph_loop_event: Fixture providing the
+        expected solutions for a graph with loop event
+        :type expected_solutions_graph_loop_event: `list`[`dict`[`str`, `int`]]
+        :param expected_edge_solutions_graph_loop_event: Fixture providing
+        expected edge solutions for the graph with the loop event
+        :type expected_edge_solutions_graph_loop_event: `dict`[`str`, `int`]
+        :param parsed_graph_with_loop: Fixture providing a :class:`Graph` with
+        a :class:`LoopEvent` containing a sub-graph
+        :type parsed_graph_with_loop: :class:`Graph`
+        :param loop_event_graph_solutions: Fixture providing a dictionary of
+        lists of :class:`GraphSolution`'s
+        :type loop_event_graph_solutions: `dict`[`str`,
+        `list`[:class:`GraphSolution`]]
+        """
+        graph_solutions = (
+            Graph.process_all_solutions_with_expanded_nested_loops(
+                events_solutions=expected_solutions_graph_loop_event,
+                edges_solutions=expected_edge_solutions_graph_loop_event,
+                events=parsed_graph_with_loop.events,
+                loop_events_graph_solutions=loop_event_graph_solutions,
+                num_loops=2,
+                num_branches=2
+            )
+        )
+        # check there is 1 GraphSolution in the list
+        assert len(graph_solutions) == 1
+        # check that the GraphSolution is what is expected
+        TestGraphGenerateSolutions.check_expected_graph_solution(
+            graph_solutions[0]
+        )
+
+    @staticmethod
+    def test_process_solutions_no_loops(
+        parsed_graph: Graph
+    ) -> None:
+        """Tests the method :class:`Graph`.`process_solutions` when no loops
+        are present
+
+        :param parsed_graph: fixture providing a parsed :class:`Graph`
+        :type parsed_graph: :class:`Graph`
+        """
+        parsed_graph.solve()
+        graph_solutions = parsed_graph.process_solutions(
+            num_loops=1,
+            num_branches=1
+        )
+        # check that the two solutions are correct
+        TestGraphGenerateSolutions.check_two_solution_graph(
+            graph_solutions
+        )
+
+    @staticmethod
+    def test_process_loop_events_solutions(
+        parsed_graph_with_loop: Graph
+    ) -> None:
+        """Tests the method :class:`Graph`.`process_loop_events_solutions`.
+        Tests for a :class:`Graph` containing a loop
+
+        :param parsed_graph_with_loop: Fixture providing a :class:`Graph` with
+        a :class:`LoopEvent`
+        :type parsed_graph_with_loop: :class:`Graph`
+        """
+        parsed_graph_with_loop.solve()
+        loop_events_graph_solutions = Graph.process_loop_events_solutions(
+            events=parsed_graph_with_loop.events,
+            num_loops=2,
+            num_branches=2
+        )
+        # check that the number of solutions is 1
+        assert len(loop_events_graph_solutions) == 1
+        graph_solutions = loop_events_graph_solutions["Event_Loop"]
+        # check that the loop events sub graph solutions are correct
+        TestGraphGenerateSolutions.check_two_solution_graph(
+            graph_solutions
+        )
+
+    @staticmethod
+    def test_process_solutions_with_loop(
+        parsed_graph_with_loop: Graph
+    ) -> None:
+        """Tests the method :class:`Graph`.`process_solutions`.
+        Tests for a :class:`Graph` containing a loop
+
+        :param parsed_graph_with_loop: Fixture providing a :class:`Graph` with
+        a :class:`LoopEvent`
+        :type parsed_graph_with_loop: :class:`Graph`
+        """
+        parsed_graph_with_loop.solve()
+        graph_solutions = parsed_graph_with_loop.process_solutions(
+            num_loops=2,
+            num_branches=2
+        )
+        # tests that the number of solutions is 1
+        assert len(graph_solutions) == 1
+        # check that the GraphSolution is as expected
+        TestGraphGenerateSolutions.check_expected_graph_solution(
+            graph_solutions[0]
+        )
+
+    @staticmethod
+    def test_get_expanded_graph_solutions_from_processed_solutions(
+        graph_solution: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`Graph`.`get_expanded_graph_solutions_from_processed_solutions`
+        Tests for loop numbers of 2
+
+        :param graph_solution: Fixture providing the :class:`GraphSolution`
+        :type graph_solution: GraphSolution
+        """
+        graph_solution.expand_graph_solutions(
+            num_branches=2,
+            num_loops=2
+        )
+        graph_solutions = (
+            Graph.get_expanded_graph_solutions_from_processed_solutions(
+                graph_solutions=[graph_solution]
+            )
+        )
+        # check that the full graph solutions are as expected
+        TestGraphGenerateSolutions.check_expected_full_graph_solutions(
+            graph_solutions
+        )
+
+    @staticmethod
+    def check_expected_full_graph_solutions(
+        graph_solutions: list[GraphSolution]
+    ) -> None:
+        """Helper function to check that the fully expanded graph solutions
+        are correct
+
+        :param graph_solutions: List of :class:`GraphSolution`'s
+        :type graph_solutions: `list`[:class:`GraphSolution`]
+        """
+        assert len(graph_solutions) == 4
+        # check loop solutions expanded correctly (removed extra event at and
+        # fork for simplicity)
+        solution_sequences = [
+            [
+                "Event_X", "Event_A", "Event_B", "Event_A", "Event_B",
+                "Event_Y"
+            ],
+            [
+                "Event_X", "Event_A", "Event_B", "Event_A",
+                "Event_C", "Event_E", "Event_Y"
+            ],
+            [
+                "Event_X", "Event_A", "Event_C",
+                "Event_E", "Event_A", "Event_B", "Event_Y"
+            ],
+            [
+                "Event_X", "Event_A", "Event_C", "Event_E",
+                "Event_A", "Event_C", "Event_E", "Event_Y"
+            ]
+        ]
+        for solution_sequence in solution_sequences:
+            # check that the solutions appear once and are correct
+            assert len([
+                True
+                for solution in (
+                    graph_solutions
+                )
+                if check_solution_correct(
+                    solution=solution,
+                    event_types=solution_sequence
+                )
+            ]) == 1
+
+    @staticmethod
+    def test_expand_solutions(
+        parsed_graph_with_loop: Graph
+    ) -> None:
+        """Tests the method :class:`Graph`.`expand_solutions`
+
+        :param parsed_graph_with_loop: Fixture providing a parsed
+        :class:`Graph` with a :class:`LoopEvent`
+        :type parsed_graph_with_loop: :class:`Graph`
+        """
+        parsed_graph_with_loop.solve()
+        graph_solutions = parsed_graph_with_loop.expand_solutions(
+            num_loops=2,
+            num_branches=2
+        )
+        # check that the genreated full GraphSolution's are as expected
+        TestGraphGenerateSolutions.check_expected_full_graph_solutions(
+            graph_solutions
         )

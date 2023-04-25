@@ -60,7 +60,7 @@ class TestSetFlowConstraint:
         # sort solutions so that the solution with all variables equal to 0 is
         # first and all variables equal to 1 is second
         sorted_solutions = sorted(
-            solutions.values(),
+            solutions,
             key=lambda x: x["group_in"]
         )
         variables_to_equal = [0, 1]
@@ -98,7 +98,7 @@ class TestSetFlowConstraint:
         # sort solutions so that the solution with all variables equal to 0 is
         # first and all variables equal to 1 is second
         sorted_solutions = sorted(
-            solutions.values(),
+            solutions,
             key=lambda x: x["group_out"]
         )
         variables_to_equal = [0, 1]
@@ -135,7 +135,7 @@ class TestSetFlowConstraint:
         # sort solutions so that the solution with all variables equal to 0 is
         # first and all variables equal to 1 is second
         sorted_solutions = sorted(
-            solutions.values(),
+            solutions,
             key=lambda x: x["group_in"]
         )
         variables_to_equal = [0, 1]
