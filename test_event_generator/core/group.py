@@ -52,6 +52,7 @@ class Group:
         self.group_variables = group_variables
         self.model = model
         self.variable = self.model.NewBoolVar(uid)
+        self.uid = uid
         self.is_into_event = is_into_event
         self.parent_group = parent_group
         self.event = event

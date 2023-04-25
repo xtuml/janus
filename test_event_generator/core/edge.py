@@ -46,6 +46,7 @@ class Edge:
         """
         self.model = model
         self.variable = self.model.NewBoolVar(uid)
+        self.uid = uid
         self.event_out = event_in
         self.event_in = event_out
         self.group_out = group_out
@@ -67,6 +68,8 @@ class Edge:
         :param event: The Event that the Edge is directed out of
         :type event: :class:`Optional`[:class:`Event`]
         """
+        if event:
+            event.set_out_edges(self)
         self._event_out = event
 
     @property
@@ -85,6 +88,8 @@ class Edge:
         :param event: The Event that the Edge is directed into
         :type event: :class:`Optional`[:class:`Event`]
         """
+        if event:
+            event.set_in_edges(self)
         self._event_in = event
 
     @property

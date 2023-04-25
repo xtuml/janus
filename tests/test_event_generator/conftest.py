@@ -23,11 +23,11 @@ def model() -> CpModel:
 
 
 @pytest.fixture
-def solver():
+def solver() -> CpSolver:
     """PyTest fixture to instantiate :class:`CpSolver`.
 
     :return: CP-Sat Solver
-    :rtype: :class:`CpModel`
+    :rtype: :class:`CpSolver`
     """
     return CpSolver()
 
@@ -84,6 +84,7 @@ def graph_def() -> dict[str, dict]:
                     }
                 ]
             },
+            "meta_data": {"EventType": "Event_A"}
         },
         "Event_B": {
             "group_in": {
@@ -92,7 +93,8 @@ def graph_def() -> dict[str, dict]:
                     "edge_A_B"
                 ]
             },
-            "group_out": None
+            "group_out": None,
+            "meta_data": {"EventType": "Event_B"}
         },
         "Event_C": {
             "group_in": {
@@ -106,7 +108,8 @@ def graph_def() -> dict[str, dict]:
                 "sub_groups": [
                     "edge_C_E"
                 ]
-            }
+            },
+            "meta_data": {"EventType": "Event_C"}
         },
         "Event_D": {
             "group_in": {
@@ -120,7 +123,8 @@ def graph_def() -> dict[str, dict]:
                 "sub_groups": [
                     "edge_D_E"
                 ]
-            }
+            },
+            "meta_data": {"EventType": "Event_D"}
         },
         "Event_E": {
             "group_in": {
@@ -130,7 +134,8 @@ def graph_def() -> dict[str, dict]:
                     "edge_D_E"
                 ]
             },
-            "group_out": None
+            "group_out": None,
+            "meta_data": {"EventType": "Event_E"}
         }
     }
     return json
@@ -198,16 +203,16 @@ def expected_solutions() -> list[dict[str, int]]:
 
 
 @pytest.fixture
-def expected_group_solutions() -> dict[int, dict[str, int]]:
+def expected_group_solutions() -> list[dict[str, int]]:
     """Py-Test fixture to define the expected group defined solutions of the
     above graph definition.
 
-    :return: Returns the expected group solutions as a dictionary of
-    dictionaries with each entry of the dictionary a distinct solution.
-    :rtype: `dict`[`int`, `dict`[`str`, `int`]]
+    :return: Returns the expected group solutions as a list of
+    dictionaries with each entry of the list a distinct solution.
+    :rtype: `list`[`dict`[`str`, `int`]]
     """
-    return {
-        0: {
+    return [
+        {
             "Event_A.out": 1,
             "Event_B.in": 1,
             "Event_C.in": 0,
@@ -216,7 +221,7 @@ def expected_group_solutions() -> dict[int, dict[str, int]]:
             "Event_D.out": 0,
             "Event_E.in": 0,
         },
-        1: {
+        {
             "Event_A.out": 1,
             "Event_B.in": 0,
             "Event_C.in": 1,
@@ -225,7 +230,27 @@ def expected_group_solutions() -> dict[int, dict[str, int]]:
             "Event_D.out": 1,
             "Event_E.in": 1,
         },
-    }
+    ]
+
+
+@pytest.fixture
+def expected_edge_solutions():
+    return [
+        {
+            "edge_A_B": 1,
+            "edge_A_C": 0,
+            "edge_A_D": 0,
+            "edge_C_E": 0,
+            "edge_D_E": 0
+        },
+        {
+            "edge_A_B": 0,
+            "edge_A_C": 1,
+            "edge_A_D": 1,
+            "edge_C_E": 1,
+            "edge_D_E": 1
+        },
+    ]
 
 
 @pytest.fixture
@@ -249,7 +274,8 @@ def graph_def_with_loop(
                 "sub_groups": [
                     "edge_X_loop"
                 ]
-            }
+            },
+            "meta_data": {"EventType": "Event_X"}
         },
         "Event_Loop": {
             "is_loop": True,
@@ -266,6 +292,7 @@ def graph_def_with_loop(
                 ]
             },
             "loop_graph": graph_def,
+            "meta_data": {"EventType": "Event_Loop"}
         },
         "Event_Y": {
             "group_in": {
@@ -274,7 +301,8 @@ def graph_def_with_loop(
                     "edge_loop_Y"
                 ]
             },
-            "group_out": None
+            "group_out": None,
+            "meta_data": {"EventType": "Event_Y"}
         }
     }
     return graph_def_loop
@@ -312,18 +340,28 @@ def expected_solutions_graph_loop_event() -> list[dict[str, int]]:
 
 
 @pytest.fixture
-def expected_group_solutions_graph_loop_event() -> dict[int, dict[str, int]]:
+def expected_group_solutions_graph_loop_event() -> list[dict[str, int]]:
     """PyTest fixture to provide expected Group solutions for the graph with
     loop event.
 
     :return: Dictionary of group solutions.
-    :rtype: `dict`[`int`, `dict`[`str`, `int`]]
+    :rtype: `list`[`dict`[`str`, `int`]]
     """
-    return {
-        0: {
+    return [
+        {
             "Event_X.out": 1,
             "Event_Loop.in": 1,
             "Event_Loop.out": 1,
             "Event_Y.in": 1
         }
-    }
+    ]
+
+
+@pytest.fixture
+def expected_edge_solutions_graph_loop_event():
+    return [
+        {
+            "edge_X_loop": 1,
+            "edge_loop_Y": 1
+        }
+    ]

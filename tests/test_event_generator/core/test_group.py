@@ -164,7 +164,7 @@ class TestConstraints:
             variables=all_variables
         )
         assert len(solutions) == 16
-        for solution in solutions.values():
+        for solution in solutions:
             assert (
                 solution["edge_1"] | solution["edge_2"]
                 | solution["group_1"] | solution["group_2"]
@@ -205,7 +205,7 @@ class TestConstraints:
             variables=all_variables
         )
         assert len(solutions) == 5
-        for solution in solutions.values():
+        for solution in solutions:
             assert (
                 solution["edge_1"] ^ solution["edge_2"]
                 ^ solution["group_1"] ^ solution["group_2"]
@@ -245,7 +245,7 @@ class TestConstraints:
             variables=all_variables
         )
         assert len(solutions) == 2
-        for solution in solutions.values():
+        for solution in solutions:
             assert (
                 solution["edge_1"] & solution["edge_2"]
                 & solution["group_1"] & solution["group_2"]
