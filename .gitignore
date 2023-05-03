@@ -2,3 +2,8 @@
 
 # ignore .pyc files
 *.pyc
+# ignore build files
+build
+*.egg-info
+# ignore env folder
+env

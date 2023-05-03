@@ -1,13 +1,18 @@
+# pylint: disable=W605
 """
 Tests for solutions.py
 """
 from copy import deepcopy
+import re
 import pytest
+import networkx as nx
 
 from test_event_generator.solutions import (
     EventSolution,
     GraphSolution,
-    LoopEventSolution
+    LoopEventSolution,
+    get_audit_event_jsons_and_templates,
+    get_categorised_audit_event_jsons
 )
 from tests.utils import (
     check_length_attr,
@@ -298,6 +303,242 @@ class TestEventSolution:
         assert e_info.value.args[0] == (
             "Method called but the Event is not a branching Event"
         )
+
+    @staticmethod
+    def test_repr_0(
+        event_solution: EventSolution
+    ) -> None:
+        """Tests that dunder :class:`EventSolution`.`__repr__` is accurately
+        providing the correct return value when the attribute `count` is equal
+        to 0.
+
+        :param event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Middle"
+        :type event_solution: :class:`EventSolution`
+        """
+        assert event_solution.count == 0
+        assert str(event_solution) == "Middle"
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "count",
+        [
+            pytest.param(i, id=f"count={i}")
+            for i in range(1, 5)
+        ],
+    )
+    def test_repr(
+        count: int,
+        event_solution: EventSolution
+    ) -> None:
+        """Tests that dunder :class:`EventSolution`.`__repr__` is accurately
+        providing the correct return value when the attribute `count` is
+        greater than 0.
+
+        :param count: The integer to set the attribute `count` to
+        :type count: `int`
+        :param event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Middle"
+        :type event_solution: :class:`EventSolution`
+        """
+        event_solution.count = count
+        assert str(event_solution) == f"Middle{count}"
+
+    @staticmethod
+    def test_set_event_template_id_str(
+        event_solution: EventSolution
+    ) -> None:
+        """Tests setting the property
+        :class:`EventSolution`.`event_template_id` with a string
+
+        :param event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Middle"
+        :type event_solution: :class:`EventSolution`
+        """
+        event_solution.event_template_id = "event_1"
+        assert event_solution.event_template_id == "event_1"
+
+    @staticmethod
+    def test_set_event_template_id_int(
+        event_solution: EventSolution
+    ) -> None:
+        """Tests setting the property
+        :class:`EventSolution`.`event_template_id` with an integer
+
+        :param event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Middle"
+        :type event_solution: :class:`EventSolution`
+        """
+        event_solution.event_template_id = 1
+        assert event_solution.event_template_id == "1"
+
+    @staticmethod
+    def test_get_audit_event_json_start_event_no_app_name(
+        event_solution: EventSolution
+    ) -> None:
+        """Tests :class:`EventSolution`.`get_audit_event_json` when
+        the field "applicationName" is not provided in meta_data
+
+        :param event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Middle"
+        :type event_solution: :class:`EventSolution`
+        """
+        event_solution.event_template_id = "event_1"
+        audit_event_json = event_solution.get_audit_event_json(
+            job_id="1",
+            time_stamp="2023-04-27T09:01:26Z",
+            job_name="job name"
+        )
+        expected_audit_event_json = {
+            "jobName": "job name",
+            "jobId": "1",
+            "eventType": "Middle",
+            "eventId": "event_1",
+            "timestamp": "2023-04-27T09:01:26Z",
+            "applicationName": "default_application_name"
+        }
+        for field, value in audit_event_json.items():
+            assert value == expected_audit_event_json[field]
+
+    @staticmethod
+    def test_get_audit_event_json_start_event_app_name(
+        event_solution: EventSolution
+    ) -> None:
+        """Tests :class:`EventSolution`.`get_audit_event_json` when
+        the field "applicationName" is provided in meta_data
+
+        :param event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Middle"
+        :type event_solution: :class:`EventSolution`
+        """
+        event_solution.event_template_id = "event_1"
+        event_solution.meta_data["applicationName"] = "app name"
+        audit_event_json = event_solution.get_audit_event_json(
+            job_id="1",
+            time_stamp="2023-04-27T09:01:26Z",
+            job_name="job name"
+        )
+        expected_audit_event_json = {
+            "jobName": "job name",
+            "jobId": "1",
+            "eventType": "Middle",
+            "eventId": "event_1",
+            "timestamp": "2023-04-27T09:01:26Z",
+            "applicationName": "app name"
+        }
+        for field, value in audit_event_json.items():
+            assert value == expected_audit_event_json[field]
+
+    @staticmethod
+    def test_get_audit_event_json(
+        prev_event_solution: EventSolution,
+        event_solution: EventSolution
+    ) -> None:
+        """Tests :class:`EventSolution`.`get_audit_event_json` when
+        the field "applicationName" is provided in meta_data and there is
+        a previous event to the :class:`EventSolution` instance
+
+        :param prev_event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Start"
+        :type prev_event_solution: :class:`EventSolution`
+        :param event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Middle"
+        :type event_solution: :class:`EventSolution`
+        """
+        event_solution.add_prev_event(prev_event_solution)
+        prev_event_solution.event_template_id = "event_1"
+        event_solution.event_template_id = "event_2"
+        event_solution.meta_data["applicationName"] = "app name"
+        audit_event_json = event_solution.get_audit_event_json(
+            job_id="1",
+            time_stamp="2023-04-27T09:01:26Z",
+            job_name="job name"
+        )
+        expected_audit_event_json = {
+            "jobName": "job name",
+            "jobId": "1",
+            "eventType": "Middle",
+            "eventId": "event_2",
+            "timestamp": "2023-04-27T09:01:26Z",
+            "applicationName": "app name",
+            "previousEventIds": "event_1"
+        }
+        for field, value in audit_event_json.items():
+            assert value == expected_audit_event_json[field]
+
+    @staticmethod
+    def test_get_previous_event_ids_one_previous_event(
+        event_solution: EventSolution,
+        prev_event_solution: EventSolution
+    ) -> None:
+        """Tests :class:`EventSolution`.`get_previous_event_ids` when there is
+        a previous event to the :class:`EventSolution` instance
+
+        :param event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Middle"
+        :type event_solution: :class:`EventSolution`
+        :param prev_event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Start"
+        :type prev_event_solution: :class:`EventSolution`
+        """
+        event_solution.add_prev_event(prev_event_solution)
+        prev_event_solution.event_template_id = "event_1"
+        event_solution.event_template_id = "event_2"
+        previous_event_ids = event_solution.get_previous_event_ids()
+        assert isinstance(previous_event_ids, str)
+        assert previous_event_ids == "event_1"
+
+    @staticmethod
+    def test_get_previous_event_ids_multiple_previous_events(
+        event_solution: EventSolution,
+        prev_event_solution: EventSolution
+    ) -> None:
+        """Tests :class:`EventSolution`.`get_previous_event_ids` when there are
+        multiple previous events to the :class:`EventSolution` instance
+
+        :param event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Middle"
+        :type event_solution: :class:`EventSolution`
+        :param prev_event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Start"
+        :type prev_event_solution: :class:`EventSolution`
+        """
+        prev_event_solution_2 = deepcopy(prev_event_solution)
+        event_solution.add_prev_event(prev_event_solution)
+        event_solution.add_prev_event(prev_event_solution_2)
+        prev_event_solution.event_template_id = "event_1"
+        prev_event_solution_2.event_template_id = "event_2"
+        event_solution.event_template_id = "event_3"
+        previous_event_ids = event_solution.get_previous_event_ids()
+        assert isinstance(previous_event_ids, list)
+        assert previous_event_ids[0] == "event_1"
+        assert previous_event_ids[1] == "event_2"
+
+    @staticmethod
+    def test_get_post_event_edge_tuples(
+        event_solution: EventSolution,
+        post_event_solution: EventSolution
+    ) -> None:
+        """Tests :class:`EventSolution`.`get_post_event_edge_tuples` when
+        there are multiple post events to the :class:`EventSolution` instance
+
+        :param event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "Middle"
+        :type event_solution: :class:`EventSolution`
+        :param post_event_solution: fixture providing an instance of
+        :class:`EventSolution` with EventType "End"
+        :type post_event_solution: :class:`EventSolution`
+        """
+        post_event_solution_2 = deepcopy(post_event_solution)
+        event_solution.add_post_event(post_event_solution)
+        event_solution.add_post_event(post_event_solution_2)
+        edge_tuples = event_solution.get_post_event_edge_tuples()
+        for edge_tuple, post_event in zip(
+            edge_tuples,
+            [post_event_solution, post_event_solution_2]
+        ):
+            assert edge_tuple[0] == event_solution
+            assert edge_tuple[1] == post_event
 
 
 @pytest.fixture()
@@ -675,10 +916,23 @@ class TestGraphSolution:
         :rtype: list[:class:`EventSolution`]
         """
         # create branch, break and loop events
-        branch_event_solution = EventSolution(is_branch=True)
-        break_event_solution = EventSolution(is_break_point=True)
+        branch_event_solution = EventSolution(
+            is_branch=True,
+            meta_data={
+                "EventType": "Branch"
+            }
+        )
+        break_event_solution = EventSolution(
+            is_break_point=True,
+            meta_data={
+                "EventType": "Break"
+            }
+        )
         loop_event_solution = LoopEventSolution(
-            [GraphSolution()]
+            [GraphSolution()],
+            meta_data={
+                "EventType": "Loop"
+            }
         )
         # sequence of events
         prev_event_solution.add_post_event(event_solution)
@@ -2060,3 +2314,407 @@ class TestGraphSolutionsExpansions:
             solutions=solutions,
             event_types_sequences=event_type_sequences
         )
+
+
+class TestGraphSolutionGenerateAuditEvents:
+    """Grouping of tests for generating audit event sequence jsons.
+    """
+    @staticmethod
+    def test_update_events_event_template_id_template(
+        graph_two_start_two_end: GraphSolution
+    ) -> None:
+        """Tests :class:`GraphSolution`.`update_events_event_template_id` when
+        the keyword argument `is_template` is equal to `True`
+
+        :param graph_two_start_two_end: Fixture providing a
+        :class:`GraphSolution` with two start and two end points
+        :type graph_two_start_two_end: :class:`GraphSolution`
+        """
+        graph_two_start_two_end.update_events_event_template_id(
+            is_template=True
+        )
+        for event_key, event in graph_two_start_two_end.events.items():
+            assert event.event_template_id == str(event_key)
+
+    @staticmethod
+    def test_update_events_event_template_id_uids(
+        graph_two_start_two_end: GraphSolution
+    ) -> None:
+        """Tests :class:`GraphSolution`.`update_events_event_template_id` when
+        the keyword argument `is_template` is equal to `False`. Checks if the
+        id follows the correct format
+
+        :param graph_two_start_two_end: Fixture providing a
+        :class:`GraphSolution` with two start and two end points
+        :type graph_two_start_two_end: :class:`GraphSolution`
+        """
+        uuid4hex = re.compile(
+            '[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}\\Z', re.I
+        )
+        graph_two_start_two_end.update_events_event_template_id(
+            is_template=False
+        )
+        for event_key, event in graph_two_start_two_end.events.items():
+            assert event.event_template_id != str(event_key)
+            assert bool(
+                uuid4hex.match(event.event_template_id.replace("-", ""))
+            )
+
+    @staticmethod
+    def test_create_graph_edge_list_of_events(
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests creation of an edge list from an iterable of event using
+        :class:`GraphSolution`.`create_graph_edge_list`
+
+        :param graph_simple: Fixture providing a simple :class:`GraphSolution`
+        sequence
+        :type graph_simple: :class:`GraphSolution`
+        """
+        edges = GraphSolution.create_graph_edge_list(
+            nodes=graph_simple.events.values(),
+            link_func=lambda x: x.get_post_event_edge_tuples()
+        )
+        assert len(edges) == 2
+        assert (
+            edges[0][0] == graph_simple.events[1]
+            and edges[0][1] == graph_simple.events[2]
+        )
+        assert (
+            edges[1][0] == graph_simple.events[2]
+            and edges[1][1] == graph_simple.events[3]
+        )
+
+    @staticmethod
+    def test_create_networkx_graph_from_nodes_list_of_events(
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests creation of an edge list from an iterable of
+        :class:`EventSolution`'s
+
+        :param graph_simple: Fixture providing a simple :class:`GraphSolution`
+        sequence
+        :type graph_simple: :class:`GraphSolution`
+        """
+        nx_graph = GraphSolution.create_networkx_graph_from_nodes(
+            nodes=graph_simple.events.values(),
+            link_func=lambda x: x.get_post_event_edge_tuples()
+        )
+        assert isinstance(nx_graph, nx.DiGraph)
+        assert all(
+            node in list(graph_simple.events.values())
+            for node in nx_graph
+        )
+
+    @staticmethod
+    def test_get_topologically_sorted_event_sequence(
+        graph_two_start_two_end: GraphSolution
+    ) -> None:
+        """Tests
+        :class:`GraphSolution`.`get_topologically_sorted_event_sequence`
+        for :class:`GraphSolution` with two start and two end points
+
+
+        :param graph_two_start_two_end: Fixture providing a
+        :class:`GraphSolution` with two start and two end points
+        :type graph_two_start_two_end: :class:`GraphSolution`
+        """
+
+        events = list(graph_two_start_two_end.events.values())
+        shuffled_events = events[3:5] + events[2:3] + events[:2]
+        ordered_events = GraphSolution.get_topologically_sorted_event_sequence(
+            events=shuffled_events
+        )
+        for ordered_event, event in zip(
+            ordered_events,
+            events
+        ):
+            assert ordered_event == event
+
+    @staticmethod
+    def test_get_audit_event_lists_template(
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests :class:`GraphSolution`.`get_audit_event_lists` when
+        `is_template` is set to `True`
+
+        :param graph_simple: Fixture providing a simple :class:`GraphSolution`
+        sequence
+        :type graph_simple: :class:`GraphSolution`
+        """
+        graph_simple.update_events_event_template_id(
+            is_template=True
+        )
+        audit_event_data = GraphSolution.get_audit_event_lists(
+            events=graph_simple.events.values()
+        )
+        TestGraphSolutionGenerateAuditEvents.check_audit_events_template(
+            audit_event_data=audit_event_data
+        )
+
+    @staticmethod
+    def check_audit_events_template(
+        audit_event_data: tuple[list[dict], list[str]]
+    ) -> None:
+        """Helper function to check the output from
+        :class:`GraphSolution`.`get_audit_event_lists` for the fixture
+        `graph_simple` when the job is a considered a template
+
+        :param audit_event_data: A tuple providing a list of json audit events
+        and a list of the audit event ids present
+        :type audit_event_data: `tuple`[`list`[`dict`], `list`[`str`]]
+        """
+        expected_audit_event_list = [
+            {
+                "jobName": "default_job_name",
+                "jobId": "jobID",
+                "eventType": "Start",
+                "eventId": "1",
+                "applicationName": "default_application_name"
+            },
+            {
+                "jobName": "default_job_name",
+                "jobId": "jobID",
+                "eventType": "Middle",
+                "eventId": "2",
+                "applicationName": "default_application_name",
+                "previousEventIds": "1"
+            },
+            {
+                "jobName": "default_job_name",
+                "jobId": "jobID",
+                "eventType": "End",
+                "eventId": "3",
+                "applicationName": "default_application_name",
+                "previousEventIds": "2"
+            }
+        ]
+        timestamp = re.compile(
+            '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\\Z',
+            re.I
+        )
+        for audit_event, expected_audit_event in zip(
+            audit_event_data[0],
+            expected_audit_event_list
+        ):
+            for field, value in expected_audit_event.items():
+                assert audit_event[field] == value
+            assert bool(timestamp.match(audit_event["timestamp"]))
+        assert len(audit_event_data[1]) == 3
+        assert all(
+            audit_event["eventId"] in audit_event_data[1]
+            for audit_event in audit_event_data[0]
+        )
+
+    @staticmethod
+    def test_get_audit_event_lists_example(
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests :class:`GraphSolution`.`get_audit_event_lists` when
+        `is_template` is set to `False`
+
+        :param graph_simple: Fixture providing a simple :class:`GraphSolution`
+        sequence
+        :type graph_simple: :class:`GraphSolution`
+        """
+        for event in graph_simple.events.values():
+            event.meta_data["applicationName"] = "application name"
+        graph_simple.update_events_event_template_id(
+            is_template=False
+        )
+        audit_event_data = GraphSolution.get_audit_event_lists(
+            events=graph_simple.events.values(),
+            is_template=False,
+            job_name="job name"
+        )
+        TestGraphSolutionGenerateAuditEvents.check_audit_events_not_template(
+            audit_event_data=audit_event_data
+        )
+
+    @staticmethod
+    def check_audit_events_not_template(
+        audit_event_data
+    ) -> None:
+        """Helper function to check the output from
+        :class:`GraphSolution`.`get_audit_event_lists` for the fixture
+        `graph_simple` when the job is a considered not a template
+
+        :param audit_event_data: A tuple providing a list of json audit events
+        and a list of the audit event ids present
+        :type audit_event_data: `tuple`[`list`[`dict`], `list`[`str`]]
+        """
+        uuid4hex = re.compile(
+            '[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}\\Z', re.I
+        )
+        timestamp = re.compile(
+            '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\\Z',
+            re.I
+        )
+        expected_audit_event_list = [
+            {
+                "jobName": "job name",
+                "eventType": "Start",
+                "applicationName": "application name"
+            },
+            {
+                "jobName": "job name",
+                "eventType": "Middle",
+                "applicationName": "application name",
+            },
+            {
+                "jobName": "job name",
+                "eventType": "End",
+                "applicationName": "application name",
+            }
+        ]
+        previous_event_id = ""
+        for audit_event, expected_audit_event in zip(
+            audit_event_data[0],
+            expected_audit_event_list,
+        ):
+            for field, value in expected_audit_event.items():
+                assert audit_event[field] == value
+            assert bool(timestamp.match(audit_event["timestamp"]))
+            assert bool(
+                uuid4hex.match(audit_event["jobId"].replace("-", ""))
+            )
+            assert bool(
+                uuid4hex.match(audit_event["eventId"].replace("-", ""))
+            )
+            if "previousEventIds" in audit_event:
+                previous_event_id == audit_event["eventId"]
+            previous_event_id = audit_event["eventId"]
+        assert len(audit_event_data[1]) == 3
+        assert all(
+            audit_event["eventId"] in audit_event_data[1]
+            for audit_event in audit_event_data[0]
+        )
+
+    @staticmethod
+    def test_create_audit_event_jsons_template(
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests :class:`GraphSolution`.`get_create_audit_event_jsons` when
+        `is_template` is set to `True`
+
+        :param graph_simple: Fixture providing a simple :class:`GraphSolution`
+        sequence
+        :type graph_simple: :class:`GraphSolution`
+        """
+        audit_event_data = graph_simple.create_audit_event_jsons()
+        TestGraphSolutionGenerateAuditEvents.check_audit_events_template(
+            audit_event_data=audit_event_data
+        )
+
+    @staticmethod
+    def test_create_audit_event_jsons_no_template(
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests :class:`GraphSolution`.`get_create_audit_event_jsons` when
+        `is_template` is set to `False` and a job name is provided
+
+        :param graph_simple: Fixture providing a simple :class:`GraphSolution`
+        sequence
+        :type graph_simple: :class:`GraphSolution`
+        """
+        for event in graph_simple.events.values():
+            event.meta_data["applicationName"] = "application name"
+        audit_event_data_with_plot = graph_simple.create_audit_event_jsons(
+            is_template=False,
+            job_name="job name"
+        )
+        TestGraphSolutionGenerateAuditEvents.check_audit_events_not_template(
+            audit_event_data=audit_event_data_with_plot[:2]
+        )
+        assert audit_event_data_with_plot[2] is None
+
+
+def test_get_audit_event_jsons_and_templates_templates(
+    graph_simple: GraphSolution
+) -> list[GraphSolution]:
+    """Tests `get_create_audit_event_jsons_and_templates` when
+    `is_template` is set to `True`
+
+    :param graph_simple: Fixture providing a simple :class:`GraphSolution`
+    sequence
+    :type graph_simple: :class:`GraphSolution`
+    :return: Returns a list of :class:`GraphSolution`'s
+    :rtype: `list`[:class:`GraphSolution`]
+    """
+    graph_solutions = [
+        graph_simple,
+        deepcopy(graph_simple)
+    ]
+    audit_events_data_tuples = get_audit_event_jsons_and_templates(
+        graph_solutions=graph_solutions
+    )
+    for audit_events_data_tuple in audit_events_data_tuples:
+        TestGraphSolutionGenerateAuditEvents.check_audit_events_template(
+            audit_event_data=audit_events_data_tuple[:2]
+        )
+        assert audit_events_data_tuple[2] is None
+    return graph_solutions
+
+
+def test_get_audit_event_jsons_and_templates_no_template(
+    graph_simple: GraphSolution
+) -> None:
+    """Tests `get_create_audit_event_jsons_and_templates` when
+    `is_template` is set to `False` and a job name is provided
+
+    :param graph_simple: Fixture providing a simple :class:`GraphSolution`
+    sequence
+    :type graph_simple: :class:`GraphSolution`
+    """
+    for event in graph_simple.events.values():
+        event.meta_data["applicationName"] = "application name"
+    graph_solutions = [
+        graph_simple,
+        deepcopy(graph_simple)
+    ]
+    audit_events_data_tuples = get_audit_event_jsons_and_templates(
+        graph_solutions=graph_solutions,
+        is_template=False,
+        job_name="job name"
+    )
+    for audit_events_data_tuple in audit_events_data_tuples:
+        TestGraphSolutionGenerateAuditEvents.check_audit_events_not_template(
+            audit_event_data=audit_events_data_tuple[:2]
+        )
+        assert audit_events_data_tuple[2] is None
+
+
+def test_get_categorised_audit_event_jsons(
+    graph_simple: GraphSolution
+) -> None:
+    """Tests `get_categorised_audit_event_jsons`
+
+    :param graph_simple: Fixture providing a simple :class:`GraphSolution`
+    sequence
+    :type graph_simple: :class:`GraphSolution`
+    """
+    graph_solutions = test_get_audit_event_jsons_and_templates_templates(
+        graph_simple=graph_simple
+    )
+    categorised_graph_solutions = {
+        "category1": (
+            graph_solutions,
+            True
+        ),
+        "category2": (
+            graph_solutions,
+            False
+        )
+    }
+    categorised_audit_event_data = get_categorised_audit_event_jsons(
+        categorised_graph_solutions
+    )
+    assert "category1" in categorised_audit_event_data
+    assert "category2" in categorised_audit_event_data
+    assert categorised_audit_event_data["category1"][1]
+    assert not categorised_audit_event_data["category2"][1]
+    for audit_event_data_category in categorised_audit_event_data.values():
+        for audit_event_data in audit_event_data_category[0]:
+            TestGraphSolutionGenerateAuditEvents.check_audit_events_template(
+                audit_event_data=audit_event_data
+            )

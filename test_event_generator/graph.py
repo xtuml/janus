@@ -8,11 +8,15 @@ from typing import Type, Union, Iterable, Optional
 from ortools.sat.python.cp_model import CpModel, CpSolver, IntVar
 from flatdict import FlatterDict
 import numpy as np
-from .core.edge import Edge
-from .core.group import ORGroup, XORGroup, ANDGroup, Group
-from .core.event import Event, LoopEvent
-from .utils.utils import solve_model_core
-from .solutions import EventSolution, LoopEventSolution, GraphSolution
+from test_event_generator.core.edge import Edge
+from test_event_generator.core.group import ORGroup, XORGroup, ANDGroup, Group
+from test_event_generator.core.event import Event, LoopEvent
+from test_event_generator.utils.utils import solve_model_core
+from test_event_generator.solutions import (
+    EventSolution,
+    LoopEventSolution,
+    GraphSolution
+)
 
 
 class Graph:
@@ -374,9 +378,15 @@ class Graph:
             core_variables=variables_to_save
         )
         # get events solutions
-        self.solutions["Event"] = self.convert_to_event_solutions(
-            self.solutions["Group"]
-        )
+        if len(self.events) == 1:
+            self.solutions["Event"] = [
+                {event_id: 1 for event_id in self.events}
+            ]
+            self.solutions["Edge"] = [{}]
+        else:
+            self.solutions["Event"] = self.convert_to_event_solutions(
+                self.solutions["Group"]
+            )
         # solve all loop event subgraphs
         self.solve_loop_events_sub_graphs(
             loop_events=self.filter_events(self.events.values())

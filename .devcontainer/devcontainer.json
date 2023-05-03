@@ -13,7 +13,7 @@
 
 	// Use 'postCreateCommand' to run commands after the container is created.
 	"postCreateCommand": {
-        "1": "pip3 install --user -r requirements.txt",
+        "1": "sudo apt-get update && sudo apt-get -y install graphviz graphviz-dev && pip3 install --user -r requirements.txt",
         "2": "echo 'export PYTHONPATH=/workspaces/test-event-generator:$PYTHONPATH' >> ~/.bashrc"
     }
 
