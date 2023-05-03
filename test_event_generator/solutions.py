@@ -1,11 +1,19 @@
+# pylint: disable=R0904
+# pylint: disable=R0902
+# pylint: disable=C0302
 """
 Classes and methods to process and combine solutions
 """
 from __future__ import annotations
-from typing import Self, Optional
+from typing import Self, Optional, Iterable, Callable
 from copy import copy, deepcopy
 from itertools import product
 import random
+import datetime
+import uuid
+
+import networkx as nx
+import matplotlib.pyplot as plt
 
 
 class EventSolution:
@@ -36,7 +44,19 @@ class EventSolution:
         self.meta_data = meta_data
         self.previous_events: list[EventSolution] = []
         self.post_events: list[EventSolution] = []
-        self.kwargs = kwargs
+        self.event_template_id: str = ""
+        _ = kwargs
+        self.count = 0
+
+    def __repr__(self) -> str:
+        """Dunder method to return a string representation of the object
+
+        :return: Returns the EventType and count number (if over zero)
+        :rtype: `str`
+        """
+        if self.count == 0:
+            return self.meta_data["EventType"]
+        return f'{self.meta_data["EventType"]}{self.count}'
 
     def add_prev_event(self, event_solution: Self) -> None:
         """Method to add an :class:`EventSolution` to the list of previous
@@ -131,13 +151,103 @@ class EventSolution:
         return len(self.previous_events) == 0
 
     @property
-    def is_end(self):
+    def is_end(self) -> bool:
         """Property defining if the instance is an end event.
 
         :return: Boolean indicating if the instance is an end event.
         :rtype: `bool`
         """
         return len(self.post_events) == 0
+
+    @property
+    def event_template_id(self) -> str:
+        """Getter for property event_template_id
+
+        :return: Returns the value for event_template_id
+        :rtype: `str`
+        """
+        return self._event_template_id
+
+    @event_template_id.setter
+    def event_template_id(self, template_id: str | int) -> None:
+        """Setter for property event_template_id
+
+        :param template_id: The value to set event_template_id
+        :type template_id: `str` | `int`
+        """
+        if isinstance(template_id, int):
+            template_id = str(template_id)
+        self._event_template_id = template_id
+
+    def get_audit_event_json(
+        self,
+        job_id: str,
+        time_stamp: str,
+        job_name: str = "default_job_name"
+    ) -> dict:
+        """Method to generate an audit event json for the instance with a
+        given number in a timestamp seq.
+
+        :param job_id: Unique id of the job the event is part of.
+        :type job_id: `str`
+        :param time_stamp: Timestamp string
+        :type time_stamp: `str`
+        :param job_name: The name of the job definition the event is part of,
+        defaults to "default_job_name"
+        :type job_name: `str`, optional
+        :return: Returns a dictionary representing a JSON template for the
+        audit event
+        :rtype: `dict`
+        """
+        audit_json = {
+            "jobName": job_name,
+            "jobId": job_id,
+            "eventType": self.meta_data["EventType"],
+            "eventId": self.event_template_id,
+            "timestamp": time_stamp,
+            "applicationName": (
+                self.meta_data["applicationName"]
+                if "applicationName" in self.meta_data
+                else "default_application_name"
+            )
+        }
+        if not self.is_start:
+            audit_json["previousEventIds"] = self.get_previous_event_ids()
+        return audit_json
+
+    def get_previous_event_ids(self) -> str | list[str]:
+        """Method to get the previous event ids of the
+        :class:`EventSolution`'s in the previous_event list.
+
+        :return: Returns a single string of the event_template_id if the
+        previous_event list is of length 1, other wise returns a list of the
+        event_template_id's for each event in the previous_event list.
+        :rtype: `str` | `list`[`str`]
+        """
+        prev_event_ids = [
+            prev_event.event_template_id
+            for prev_event in self.previous_events
+        ]
+        if len(prev_event_ids) == 1:
+            return prev_event_ids[0]
+        return prev_event_ids
+
+    def get_post_event_edge_tuples(
+        self
+    ) -> list[tuple[EventSolution, EventSolution]]:
+        """Method to return a list of the directed edge tuples between the
+        instance and its post events
+
+        :return: Returns the list of directed edge tuples
+        :rtype: `list`[`tuple`[:class:`EventSolution`, :class:`EventSolution`]]
+        """
+        if self.is_end:
+            return []
+
+        return [
+            (self, event)
+            for event in self.post_events
+        ]
 
 
 class LoopEventSolution(EventSolution):
@@ -683,3 +793,313 @@ class GraphSolution:
             end_event.add_to_post_events()
         for post_event in event.post_events:
             post_event.previous_events.remove(event)
+
+    def create_audit_event_jsons(
+        self,
+        is_template: bool = True,
+        job_name: str = "default_job_name",
+        return_plot: bool = False
+    ) -> tuple[list[dict], list[str], plt.Figure | None]:
+        """Method to create the audit event jsons for the instance. Updates
+        the event_templateid's for each :class:`EventSolution` first and
+        uses a topological sort (Kahn's algotrithm) to order the events.
+        Provides a timestamp to each of the events 1 second after the next
+        event in the list. Returns the list of audit event jsons as well as a
+        list of the audit event event_template_id's.
+
+        :param is_template: Boolean indicating if job is a template
+        job or unique ids should be provided for events and the job,
+        defaults to `True`
+        :type is_template: `bool`, optional
+        :param job_name: The job definition name, defaults to
+        "default_job_name"
+        :type job_name: `str`, optional
+        :param return_plot: Boolean indicating if a figure object of the
+        topologically sorted graph should be returned or not, defaults to
+        `False`
+        :type return_plot: `bool`, optional
+        :return: Returns a tuple of:
+        * a list of the audit event jsons
+        * a list of the event template ids
+        * A figure object of topologically sorted graph or `None`
+        :rtype: `tuple`[`list`[`dict`], `list`[`str`], :class:`plt.Figure` |
+        `None`]
+        """
+        self.update_events_event_template_id(is_template)
+        ordered_events = self.get_topologically_sorted_event_sequence(
+            self.events.values()
+        )
+        (
+            audit_event_sequence,
+            audit_event_template_ids
+        ) = self.get_audit_event_lists(
+            events=ordered_events,
+            is_template=is_template,
+            job_name=job_name
+        )
+        fig = None
+        if return_plot:
+            fig = self.get_sequence_plot(
+                ordered_events
+            )
+
+        return audit_event_sequence, audit_event_template_ids, fig
+
+    def update_events_event_template_id(
+        self,
+        is_template=True
+    ) -> None:
+        """Method to update the event_template_id's of the
+        :class:`EventSolution` instances with the events dictionary. Uses the
+        event_key as the value.
+
+        :param is_template: Boolean indicating if the job is a template job or
+        not, defaults to `True`
+        :type is_template: `bool`, optional
+        """
+        for event_key, event in self.events.items():
+            event.event_template_id = (
+                event_key if is_template else str(uuid.uuid4())
+            )
+
+    @staticmethod
+    def get_topologically_sorted_event_sequence(
+        events: Iterable[EventSolution]
+    ) -> list[EventSolution]:
+        """Takes an iterable of :class:`EventSolution` and topologically sorts
+        them based on the Directed Acyclic Graph (DAG) that they represent
+
+        :param events: Iterable of the :class:`EventSolution`'s to sort
+        :type events: :class:`Iterable`[:class:`EventSolution`]
+        :return: Returns a list of the :class:`EventSolution`'s sorted
+        topologically
+        :rtype: `list`[:class:`EventSolution`]
+        """
+        nx_graph = GraphSolution.create_networkx_graph_from_nodes(
+            nodes=events,
+            link_func=lambda x: x.get_post_event_edge_tuples()
+        )
+        ordered_events = list(nx.topological_sort(nx_graph))
+        return ordered_events
+
+    @staticmethod
+    def create_networkx_graph_from_nodes(
+        nodes: Iterable[object],
+        link_func: Callable
+    ) -> nx.DiGraph:
+        """Method to create a networkx Directed Graph from an :class:`Iterable`
+        of arbitrary :class:`object`'s. Uses an input function to create the
+        links between nodes
+
+        :param nodes: An :class:`Iterable` of :class:`objects` that will be
+        used as nodes
+        :type nodes: :class:`Iterable`[:class:`object`]
+        :param link_func: Function to call to link nodes
+        :type link_func: :class:`Callable`
+        :return: Returns a networkx :class:`DiGraph`
+        :rtype: :class:`nx.DiGraph`
+        """
+        edges = GraphSolution.create_graph_edge_list(
+            nodes=nodes,
+            link_func=link_func
+        )
+        nx_graph = nx.from_edgelist(edges, create_using=nx.DiGraph)
+        return nx_graph
+
+    @staticmethod
+    def create_graph_edge_list(
+        nodes: Iterable[object],
+        link_func: Callable
+    ) -> list:
+        """Creates a list of edges from an :class:`Iterable` of nodes
+
+        :param nodes: :class:`Iterable` of nodes to link
+        :type nodes: :class:`Iterable`[:class:`object`]
+        :param link_func: Function to call on the :class:`object`'s  to link
+        nodes
+        :type link_func: :class:`Callable`
+        :return: Returns a list of edges
+        :rtype: `list`
+        """
+        edges = []
+        for node in nodes:
+            edges.extend(link_func(node))
+        return edges
+
+    @staticmethod
+    def get_audit_event_lists(
+        events: Iterable[EventSolution],
+        is_template: bool = True,
+        job_name: str = "default_job_name"
+    ) -> tuple[list[dict], list[str]]:
+        """Method to generate a sequence of audit event jsons from a sequence
+        of :class:`EventSolution` along with a timestamp that is 1 second
+        after the previous event in the sequence. Also generates a list of the
+        unique eventId templates.
+
+        :param events: Iterable of :class:`EventSolution`
+        :type events: :class:`Iterable`[:class:`EventSolution`]
+        :param is_template: Boolean indicating if job is a template
+        job or unique ids should be provided for events and the job,
+        defaults to `True`
+        :type is_template: `bool`, optional
+        :param job_name: The job definition name, defaults to
+        "default_job_name"
+        :type job_name: `str`, optional
+        :return: Returns a tuple with the first entry the list of audit event
+        jsons and the second entry the list of unique eventId templates
+        :rtype: `tuple`[`list`[`dict`], `list`[`str`]]
+        """
+        audit_event_sequence = []
+        audit_event_template_ids = []
+        # set job id depending on template or not
+        job_id = "jobID" if is_template else str(uuid.uuid4())
+        # get current time
+        event_time = datetime.datetime.now()
+        for event in events:
+            audit_event_sequence.append(
+                event.get_audit_event_json(
+                    job_id=job_id,
+                    time_stamp=event_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    job_name=job_name
+                )
+            )
+            audit_event_template_ids.append(event.event_template_id)
+            # update time to 1 second after previous event
+            event_time += datetime.timedelta(seconds=1)
+
+        return audit_event_sequence, audit_event_template_ids
+
+    @staticmethod
+    def get_sequence_plot(
+        ordered_events: Iterable[EventSolution]
+    ) -> plt.Figure:
+        """Method to obtain a sequence plot from an :class:`Iterable` of
+        :class:`EventSolution`
+
+        :param ordered_events: The :class:`EventSolution`'s to create the plot
+        for.
+        :type ordered_events: :class:`Iterable`[:class:`EventSolution`]
+        :return: Figure object of the plot
+        :rtype: :class:`plt.Figure`
+        """
+        GraphSolution.update_event_type_counts(ordered_events)
+        nx_graph = GraphSolution.create_networkx_graph_from_nodes(
+            nodes=ordered_events,
+            link_func=lambda x: [
+                tuple(str(node) for node in node_link)
+                for node_link in x.get_post_event_edge_tuples()
+            ]
+        )
+        fig = GraphSolution.get_graphviz_plot(nx_graph)
+        return fig
+
+    @staticmethod
+    def update_event_type_counts(events: Iterable[EventSolution]) -> None:
+        """Method to update the event type counts for an :class:`Iterable` of
+        :class:`EventSolution`'s
+
+        :param events: Iterable of :class:`EventSolution` to update counts for.
+        :type events: Iterable[EventSolution]
+        """
+        event_type_count = {}
+        for event in events:
+            event_type = event.meta_data["EventType"]
+            if event_type in event_type_count:
+                event_type_count[event_type] += 1
+            else:
+                event_type_count[event_type] = 1
+            event.count = event_type_count[event_type]
+
+    @staticmethod
+    def get_graphviz_plot(
+        nx_graph: nx.DiGraph
+    ) -> plt.Figure:
+        """Creates a :class:`plt.Figure` object containing the plot of the
+        input graph
+
+        :param nx_graph: the networkx Directed Graph to plot
+        :type nx_graph: :class:`nx.DiGraph`
+        :return: Returns a :class:`plt.Figure` objects containing the plot
+        :rtype: :class:`plt.Figure`
+        """
+        pos = nx.nx_agraph.graphviz_layout(nx_graph, prog="dot")
+        fig, axis = plt.subplots()
+        nx.draw(
+            nx_graph,
+            pos,
+            ax=axis,
+            with_labels=True,
+            arrows=True,
+            node_size=1600,
+            font_size=20
+        )
+        return fig
+
+
+def get_audit_event_jsons_and_templates(
+    graph_solutions: list[GraphSolution],
+    is_template: bool = True,
+    job_name: str = "default_job_name",
+    return_plots=False
+) -> list[tuple[list[dict], list[str], plt.Figure | None]]:
+    """Function create a list of audit event sequence and audit eventId
+    template pairs for a list of :class:`GraphSolution`'s
+
+    :param graph_solutions: List of :class:`GraphSolution`'s
+    :type graph_solutions: `list`[:class:`GraphSolution`]
+    :param is_template: Boolean indicating if the jobs are template
+    jobs or unique ids should be provided for events and the jobs,
+    defaults to `True`
+    :type is_template: `bool`, optional
+    :param job_name: The job definition name, defaults to
+    "default_job_name"
+    :type job_name: `str`, optional
+    :param return_plot: Boolean indicating if figure objects of the
+    topologically sorted graphs should be returned or not, defaults to
+    `False`
+    :type return_plot: `bool`, optional
+    :return: Returns the list of audit event sequence and audit eventId
+    template pairs
+    :rtype: `list`[`tuple`[`list`[`dict`], `list`[`str`],
+    :class:`plt.Figure` | `None`]]
+    """
+    return [
+        graph_solution.create_audit_event_jsons(
+            is_template=is_template,
+            job_name=job_name,
+            return_plot=return_plots
+        )
+        for graph_solution in graph_solutions
+    ]
+
+
+def get_categorised_audit_event_jsons(
+    categorised_graph_solutions: dict[str, tuple[list[GraphSolution], bool]],
+) -> dict[str, tuple[list[tuple[list[dict], list[str]]], bool]]:
+    """Method to get categorised audit event jsons from a dictionary of a list
+    of `:class:GraphSolution`'s and valid/invalid boolean pair
+
+    :param categorised_graph_solutions: Dictionary with key as category and
+    values a `tuple` with first entry a list of the :class:`GraphSolution`
+    instances in that category and second entry a boolean indicating whether
+    the category holds valid or invalid :class:`GraphSolution` sequences,
+    respectively.
+    :type categorised_graph_solutions: `dict`[`str`,
+    `tuple`[`list`[:class:`GraphSolution`], `bool`]]
+    :return: Returns a dictionary with key as category and
+    values a `tuple` with first entry a list of `tuple`'s with first entry the
+    list of audit event jsons and second entry a list of the audit event ids.
+    The second entry in the highest level tuple is a boolean indicating whether
+    the category holds valid or invalid :class:`GraphSolution` sequences,
+    respectively.
+    :rtype: `dict`[`str`, `tuple`[`list`[`tuple`[`list`[`dict`],
+    `list`[`str`]]], `bool`]]
+    """
+    return {
+        category: (get_audit_event_jsons_and_templates(
+            graph_sol_valid_bool_pair[0]
+        ), graph_sol_valid_bool_pair[1])
+        for category, graph_sol_valid_bool_pair
+        in categorised_graph_solutions.items()
+    }
