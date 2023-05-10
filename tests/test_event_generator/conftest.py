@@ -234,7 +234,14 @@ def expected_group_solutions() -> list[dict[str, int]]:
 
 
 @pytest.fixture
-def expected_edge_solutions():
+def expected_edge_solutions() -> list[dict[str, int]]:
+    """Pytest fixture to provide the edge solutions for the above graph
+    definition
+
+    :return: List of dictionaries with keys as edge uid and values as the
+    value in the solutions
+    :rtype: `list`[`dict`[`str`, `int`]]
+    """
     return [
         {
             "edge_A_B": 1,
@@ -358,10 +365,193 @@ def expected_group_solutions_graph_loop_event() -> list[dict[str, int]]:
 
 
 @pytest.fixture
-def expected_edge_solutions_graph_loop_event():
+def expected_edge_solutions_graph_loop_event() -> list[dict[str, int]]:
+    """Pytest fixture to provide the edge solutions for the above graph
+    definition
+
+    :return: List of dictionaries with keys as edge uid and values as the
+    value in the solutions
+    :rtype: `list`[`dict`[`str`, `int`]]
+    """
     return [
         {
             "edge_X_loop": 1,
             "edge_loop_Y": 1
         }
     ]
+
+
+@pytest.fixture
+def graph_def_with_branch(
+    graph_def: dict[str, dict]
+) -> dict[str, dict]:
+    """PyTest fixture that defines a graph definition containing a branch event
+    that contains the standard graph definition of the branch sub graph
+
+    :param loop_sub_graph_def: The branch sub graph standard definition.
+    :type loop_sub_graph_def: `dict`[`str`, `dict`]
+    :return: Returns the standardised graph definition with branch event with
+    branch sub graph.
+    :rtype: `dict`[`str`, `dict`]
+    """
+    graph_def_branch = {
+        "Event_X": {
+            "group_in": None,
+            "group_out": {
+                "type": "OR",
+                "sub_groups": [
+                    "edge_X_branch"
+                ]
+            },
+            "meta_data": {"EventType": "Event_X"}
+        },
+        "Event_Branch": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "edge_X_branch"
+                ]
+            },
+            "group_out": {
+                "type": "OR",
+                "sub_groups": [
+                    "edge_branch_Y"
+                ]
+            },
+            "branch_graph": graph_def,
+            "meta_data": {"EventType": "Event_Branch"}
+        },
+        "Event_Y": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "edge_branch_Y"
+                ]
+            },
+            "group_out": None,
+            "meta_data": {"EventType": "Event_Y"}
+        }
+    }
+    return graph_def_branch
+
+
+@pytest.fixture
+def edges_graph_branch() -> list[str]:
+    """PyTest fixture to define the edge uids found in the graph with branch
+    event and subgraph defined above.
+
+    :return: The list of edge uids.
+    :rtype: `list`[`str`]
+    """
+    return [
+        "edge_X_branch",
+        "edge_branch_Y"
+    ]
+
+
+@pytest.fixture
+def expected_solutions_graph_branch_event() -> list[dict[str, int]]:
+    """PyTest fixture to provide the expected Event solutions for the graph
+    with branch event.
+
+    :return: List of Event solutions.
+    :rtype: `list`[`dict`[`str`, `int`]]
+    """
+    return [
+        {
+            "Event_X": 1,
+            "Event_Branch": 1,
+            "Event_Y": 1,
+        }
+    ]
+
+
+@pytest.fixture
+def expected_group_solutions_graph_branch_event() -> list[dict[str, int]]:
+    """PyTest fixture to provide expected Group solutions for the graph with
+    branch event.
+
+    :return: Dictionary of group solutions.
+    :rtype: `list`[`dict`[`str`, `int`]]
+    """
+    return [
+        {
+            "Event_X.out": 1,
+            "Event_Branch.in": 1,
+            "Event_Branch.out": 1,
+            "Event_Y.in": 1
+        }
+    ]
+
+
+@pytest.fixture
+def expected_edge_solutions_graph_branch_event() -> list[dict[str, int]]:
+    """Pytest fixture to provide the edge solutions for the above graph
+    definition
+
+    :return: List of dictionaries with keys as edge uid and values as the
+    value in the solutions
+    :rtype: `list`[`dict`[`str`, `int`]]
+    """
+    return [
+        {
+            "edge_X_branch": 1,
+            "edge_branch_Y": 1
+        }
+    ]
+
+
+@pytest.fixture
+def parsed_graph_with_branch(
+    graph_def_with_branch: dict[str, dict]
+) -> Graph:
+    """Pytest fixture to generate a :class:`Graph` instances from a graph
+    definition with a branch event
+
+    :param graph_def_with_branch: Dictionary containing the graph defintion
+    :type graph_def_with_branch: `dict`[`str`, `dict`]
+    :return: Returns the parsed :class:`Graph`
+    :rtype: :class:`Graph`
+    """
+    graph = Graph()
+    graph.parse_graph_def(graph_def=graph_def_with_branch)
+    return graph
+
+
+@pytest.fixture
+def graph_def_with_nested_loop_in_branch(
+    graph_def_with_branch: dict[str, dict],
+    graph_def_with_loop: dict[str, dict]
+) -> dict[str, dict]:
+    """PyTest fixture that defines a graph definition containing a branch event
+    that contains the standard graph definition of the branch sub graph
+
+    :param graph_def_with_branch: Dictionary containing the graph defintion
+    :type graph_def_with_branch: `dict`[`str`, `dict`]
+    :param graph_def_with_loop: The sub graph with loop standard definition.
+    :type graph_def_with_loop: `dict`[`str`, `dict`]
+    :return: Returns the standardised graph definition with branch event with
+    branch sub graph and nested loop.
+    :rtype: `dict`[`str`, `dict`]
+    """
+    graph_def_with_branch["Event_Branch"]["branch_graph"] = (
+        graph_def_with_loop
+    )
+    return graph_def_with_branch
+
+
+@pytest.fixture
+def parsed_graph_with_nested_loop_in_branch(
+    graph_def_with_nested_loop_in_branch: dict[str, dict]
+) -> Graph:
+    """
+
+    :param graph_def_with_nested_loop_in_branch: Standard graph definition
+    containing a graph with branch event with a nested loop
+    :type graph_def_with_nested_loop_in_branch: `dict`[`str`, `dict`]
+    :return: Returns the parsed :class:`Graph`
+    :rtype: :class:`Graph`
+    """
+    graph = Graph()
+    graph.parse_graph_def(graph_def=graph_def_with_nested_loop_in_branch)
+    return graph

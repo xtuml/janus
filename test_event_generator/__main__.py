@@ -180,7 +180,7 @@ def get_graph_sols_for_graph_def(
     graph = Graph()
     graph.parse_graph_def(graph_def)
     graph.solve()
-    graph_sols = graph.expand_solutions(
+    graph_sols = graph.get_all_combined_graph_solutions(
         num_loops=num_loops,
         num_branches=num_branches
     )

@@ -5,9 +5,10 @@
 Classes and methods to process and combine solutions
 """
 from __future__ import annotations
+from abc import ABC, abstractmethod
 from typing import Self, Optional, Iterable, Callable
 from copy import copy, deepcopy
-from itertools import product
+from itertools import product, combinations_with_replacement
 import random
 import datetime
 import uuid
@@ -250,7 +251,84 @@ class EventSolution:
         ]
 
 
-class LoopEventSolution(EventSolution):
+class SubGraphEventSolution(EventSolution, ABC):
+    """Sub class of :class:`EventSolution` to act as a base abstract class
+    for :class:`LoopEventSolution` and :class:`BranchEvent Solution`
+
+    :param graph_solutions: List of sub :class:`GraphSolution`'s
+    :type graph_solutions: `list`[:class:`GraphSolution`]
+    :param meta_data: Optional meta-data to include with the
+    :class:`EventSolution`, defaults to `None`
+    :type meta_data: :class:`Optional`[`dict`], optional
+    """
+    def __init__(
+        self,
+        graph_solutions: list[GraphSolution],
+        meta_data: Optional[dict] = None,
+        **kwargs
+    ) -> None:
+        """Constructor method
+        """
+        super().__init__(
+            meta_data=meta_data,
+            **kwargs
+        )
+        self.graph_solutions = graph_solutions
+        self.expanded_solutions: list[GraphSolution] = []
+
+    @abstractmethod
+    def expand(self, num_expansion: int) -> None:
+        """Abstract method to expand the instance :class:`GraphSolution`'s
+
+        :param num_expansion: The number to expand by
+        :type num_expansion: `int`
+        """
+        # replace with method for subclasses
+
+    @classmethod
+    def make_new(
+        cls,
+        graph_solutions: list[GraphSolution],
+        meta_data: Optional[dict] = None,
+        **kwargs
+    ) -> SubGraphEventSolution:
+        """Class method to provide a new instance of the class of the instance
+
+        :param graph_solutions: List of sub :class:`GraphSolution`'s
+        :type graph_solutions: `list`[:class:`GraphSolution`]
+        :param meta_data: Optional meta-data to include with the
+        :class:`EventSolution`, defaults to `None`
+        :type meta_data: :class:`Optional`[`dict`], optional
+        :return: Returns an instance of the instance class
+        :rtype: :class:`SubGraphEventSolution`
+        """
+        return cls(
+            graph_solutions=graph_solutions,
+            meta_data=meta_data,
+            **kwargs
+        )
+
+    def __copy__(self) -> SubGraphEventSolution:
+        """Copy dunder method
+
+        :return: Returns a new instance of the class containing the identical
+        graph_solutions, meta_data and expanded_solutions attributes of the
+        instance
+        :rtype: SubGraphEventSolution
+        """
+        # graph solutions must be the same (in memory) as the instance
+        copied_sub_graph_event_solution = self.make_new(
+            graph_solutions=self.graph_solutions,
+            meta_data=self.meta_data
+        )
+        # make sure expanded solutions are the same (in memory) as the instance
+        copied_sub_graph_event_solution.expanded_solutions = (
+            self.expanded_solutions
+        )
+        return copied_sub_graph_event_solution
+
+
+class LoopEventSolution(SubGraphEventSolution):
     """Sub-class of :class:`EventSolution` adding extra functionality to
     handle an :class:`EventSolution` that has sub graph solutions within it.
 
@@ -270,17 +348,16 @@ class LoopEventSolution(EventSolution):
         """Constructor method
         """
         super().__init__(
+            graph_solutions=graph_solutions,
             meta_data=meta_data,
             **kwargs
         )
-        self.graph_solutions = graph_solutions
-        self.expanded_solutions: Optional[list[GraphSolution]] = None
 
-    def expand_loops(self, loop_count: int) -> None:
+    def expand(self, num_expansion: int) -> None:
         """Method to expand the loop
 
-        :param loop_count: The number of iterations of the loop
-        :type loop_count: `int`
+        :param num_expansion: The number of iterations of the loop
+        :type num_expansion: `int`
         """
         # if the loop has already been expanded do nothing
         if self.expanded_solutions:
@@ -296,13 +373,13 @@ class LoopEventSolution(EventSolution):
         # get all possible solutions where a break has not occurred
         solutions_no_break_combos = list(
             product(
-                solutions_no_break, repeat=loop_count
+                solutions_no_break, repeat=num_expansion
             )
         )
         # setup list for all combinations of solutions with a break.
         # Initialised with the possible solutions with a break
         solutions_with_break_combos = self.solution_combinations_with_break(
-            loop_count=loop_count,
+            loop_count=num_expansion,
             solutions_no_break=solutions_no_break,
             solutions_with_break=solutions_with_break
         )
@@ -408,6 +485,47 @@ class LoopEventSolution(EventSolution):
         ]
 
 
+class BranchEventSolution(SubGraphEventSolution):
+    """Sub-class of :class:`EventSolution` adding extra functionality to
+    handle an :class:`EventSolution` that has sub graph solutions within it.
+
+    :param graph_solutions: A list of :class:`GraphSolution` that the instance
+    contains.
+    :type graph_solutions: `list`[:class:`GraphSolution`]
+    :param meta_data: Optional meta data to include with the event,
+    defaults to `None`
+    :type meta_data: :class:`Optional`[`dict`], optional
+    """
+    def __init__(
+        self,
+        graph_solutions: list[GraphSolution],
+        meta_data: Optional[dict] = None,
+        **kwargs
+    ) -> None:
+        """Constructor method
+        """
+        super().__init__(
+            graph_solutions=graph_solutions,
+            meta_data=meta_data,
+            **kwargs
+        )
+
+    def expand(self, num_expansion: int) -> None:
+        """Method to find all combinations of branches
+
+        :param num_expansion: Number of branches from branch event
+        :type num_expansion: `int`
+        """
+        if self.expanded_solutions:
+            return
+        solutions_combos = list(
+            combinations_with_replacement(
+                self.graph_solutions, r=num_expansion
+            )
+        )
+        self.expanded_solutions = solutions_combos
+
+
 class GraphSolution:
     """Class that holds a sequence of :class:`EventSolution`'s that are
     held in an event dictionary at a unique key. :class:`EventSolution`'s may
@@ -440,7 +558,7 @@ class GraphSolution:
         self.start_events: dict[str, EventSolution] = {}
         self.end_events: dict[str, EventSolution] = {}
         self.loop_events: dict[str, LoopEventSolution] = {}
-        self.branch_points: dict[str, EventSolution] = {}
+        self.branch_points: dict[str, BranchEventSolution] = {}
         self.break_points: dict[str, EventSolution] = {}
         self.events: dict[str, EventSolution] = {}
         self.event_dict_count: int = 0
@@ -485,13 +603,13 @@ class GraphSolution:
         """
         self.loop_events[self.event_dict_count] = event
 
-    def _add_branch_point(self, event: EventSolution) -> None:
-        """Private method to add an :class:`EventSolution` instance to the
-        dictionary of branch points using the `event_dict_count` of the
+    def _add_branch_point(self, event: BranchEventSolution) -> None:
+        """Private method to add an :class:`BranchEventSolution` instance to
+        the dictionary of branch points using the `event_dict_count` of the
         instance as a key.
 
-        :param event: :class:`EventSolution` to be added
-        :type event: :class:`EventSolution`
+        :param event: :class:`BranchEventSolution` to be added
+        :type event: :class:`BranchEventSolution`
         """
         self.branch_points[self.event_dict_count] = event
 
@@ -521,10 +639,10 @@ class GraphSolution:
             self._add_start_event(event)
         if event.is_end:
             self._add_end_event(event)
-        if event.is_branch:
-            self._add_branch_point(event)
         if event.is_break_point:
             self._add_break_point(event)
+        if isinstance(event, BranchEventSolution):
+            self._add_branch_point(event)
         if isinstance(event, LoopEventSolution):
             self._add_loop_event(event)
 
@@ -610,114 +728,228 @@ class GraphSolution:
         )
         return combined_graph
 
-    def expand_loop_events(self, num_loops: int) -> None:
-        """Method to expand all the loop events contained in the instance.
-
-        :param num_loops: The number of loops that should occur for each loop
-        :type num_loops: `int`
-        """
-        for event in self.loop_events.values():
-            event.expand_loops(num_loops)
-
-    def expand_branch_events(self, num_branches: int) -> None:
-        """Method to expand all the branch events contained in the instance.
-
-        :param num_branches: The number of branches that should extend from
-        the event.
-        :type num_branches: `int`
-        """
-        branched_events = []
-        for event in self.branch_points.values():
-            branched_events.extend(event.extend_branches(num_branches))
-        self.parse_event_solutions(branched_events)
-
-    def expand_graph_solutions(
+    def combine_nested_solutions(
         self,
-        num_branches: int,
-        num_loops: int
-    ) -> None:
-        """Method to expand all the branch and loop events of the instance
-        whilst also expanding any nested loops within the loop events.
-
-        :param num_branches: The number of branches that should extend from
-        branch events
-        :type num_branches: `int`
-        :param num_loops: The number of iterations for the loops in loop
-        events.
-        :type num_loops: `int`
-        """
-        for event in self.loop_events.values():
-            for solution in event.graph_solutions:
-                solution.expand_graph_solutions(
-                    num_branches,
-                    num_loops
-                )
-        self.expand_branch_events(num_branches)
-        self.expand_loop_events(num_loops)
-
-    def combine_nested_loop_solutions(
-        self
+        num_loops: int,
+        num_branches: int
     ) -> list[GraphSolution]:
-        """Method to get all the expanded combinations of loop events and
-        their nested loops (can go arbitrarily deep).
+        """Method to expand and combine all nested sub graph solutions
+        together recuresively with the parent graph solution returning all
+        possible combinations.
 
-        :return: Returns a list of all the possible valid sequences of Events
+        :param num_loops: The number of loops to expand
+        :class:`LoopEventSolution`'s by.
+        :type num_loops: `int`
+        :param num_branches: The number of branches to expand
+        :class:`BranchEventSolution`'s by.
+        :type num_branches: `int`
+        :return: The list of all possible combinations as completely expanded
+        :class:`GraphSolution`'s
         :rtype: `list`[:class:`GraphSolution`]
         """
         combined_graph_solutions = [self]
+        # loop through all loop event solutions
+        # 1. expand all nested subgraphs and combine them together
+        # 2. expand the loop itself
+        # 3. combine the expanded and precombined subgraphs with the instance
+        # solution
         for event_key, event in self.loop_events.items():
-            all_event_combined_solutions = self.loop_event_combined_solutions(
-                expanded_solutions=event.expanded_solutions
+            GraphSolution.expand_nested_subgraph_event_solutions(
+                event=event,
+                num_loops=num_loops,
+                num_branches=num_branches
             )
-            combined_graph_solutions_temp: list[GraphSolution] = []
-            for solution in combined_graph_solutions:
-                for loop_solution_combination in all_event_combined_solutions:
-                    solution_copy = deepcopy(solution)
-                    event_copy = solution_copy.events[event_key]
-                    loop_solution_combination_copy = deepcopy(
-                        loop_solution_combination
+            event.expand(num_loops)
+            combined_graph_solutions_temp = (
+                GraphSolution.get_temp_combined_graph_solutions(
+                    combined_graph_solutions=combined_graph_solutions,
+                    event=event,
+                    event_key=event_key,
+                    application_function=(
+                        self.replace_loop_event_with_sub_graph_solution
                     )
-                    self.replace_loop_event_with_sub_graph_solution(
-                        solution=solution_copy,
-                        loop_solution_combination=(
-                            loop_solution_combination_copy
-                        ),
-                        event=event_copy,
-                        event_key=event_key
+                )
+            )
+            combined_graph_solutions = combined_graph_solutions_temp
+
+        # loop through all branch event solutions
+        # 1. expand all nested subgraphs and combine them together
+        # 2. expand the branch itself
+        # 3. combine the expanded and precombined subgraphs with the instance
+        # solution
+        for event_key, event in self.branch_points.items():
+            GraphSolution.expand_nested_subgraph_event_solutions(
+                event=event,
+                num_loops=num_loops,
+                num_branches=num_branches
+            )
+            event.expand(num_branches)
+            combined_graph_solutions_temp = (
+                GraphSolution.get_temp_combined_graph_solutions(
+                    combined_graph_solutions=combined_graph_solutions,
+                    event=event,
+                    event_key=event_key,
+                    application_function=(
+                        self.input_branch_graph_solutions
                     )
-                    combined_graph_solutions_temp.append(solution_copy)
+                )
+            )
             combined_graph_solutions = combined_graph_solutions_temp
         return combined_graph_solutions
 
     @staticmethod
-    def loop_event_combined_solutions(
-        expanded_solutions: list[GraphSolution]
+    def get_temp_combined_graph_solutions(
+        combined_graph_solutions: list[GraphSolution],
+        event: SubGraphEventSolution,
+        event_key: int,
+        application_function: Callable
     ) -> list[GraphSolution]:
-        """Method to obtain all the combined valid event sequences from a list
-        of expanded (all nested loop and branch events have been expanded)
-        :class:`GraphSolution`'s
+        """Method to combine a list of expanded solutions to a list of graph
+        solutions by either:
+        * replacing a loop event with the expanded sub graph solutions
+        * branching off a branch event with sub graph solutions and
+        recombining to its following events
+        TODO: Make more efficient
 
-        :param expanded_solutions: List of expanded (nested loop + branch
-        events expanded) :class:`GraphSolution`'s
-        :type expanded_solutions: `list`[:class:`GraphSolution`]
-        :return: Returns a list of all the valid Event sequences
+        :param combined_graph_solutions: List of :class:`GraphSolution`'s to
+        combine expanded solutions with
+        :type combined_graph_solutions: `list`[:class:`GraphSolution`]
+        :param event: The :class:`SubGraphEventSolution` instance that holds
+        the sub graph solutions.
+        :type event: :class:`SubGraphEventSolution`
+        :param event_key: The key value of the event in the
+        :class:`GraphSolution`'s in the list of combined graph solutions
+        :type event_key: `int`
+        :param application_function: The application function used to apply
+        the sub graph solutions to the parent graph solutions
+        :type application_function: :class:`Callable`
+        :return: Returns a list of the combined :class:`GraphSolution`'s
         :rtype: `list`[:class:`GraphSolution`]
         """
-        all_event_combined_solutions: list[GraphSolution] = []
-        for graph_solution in expanded_solutions:
-            combined_solutions = (
-                graph_solution.combine_nested_loop_solutions()
+        combined_graph_solutions_temp: list[GraphSolution] = []
+        for solution in combined_graph_solutions:
+            for combination in event.expanded_solutions:
+                solution_combined = (
+                    GraphSolution.apply_sub_graph_event_solution_sub_graph(
+                        solution=solution,
+                        combination=combination,
+                        event_key=event_key,
+                        application_function=application_function
+                    )
+                )
+                combined_graph_solutions_temp.append(solution_combined)
+        return combined_graph_solutions_temp
+
+    @staticmethod
+    def apply_sub_graph_event_solution_sub_graph(
+        solution: GraphSolution,
+        combination: GraphSolution | tuple[GraphSolution],
+        event_key: int,
+        application_function: Callable
+    ) -> "GraphSolution":
+        """Method to apply sub graph solutions of an event solution to a
+        parent :class:`GraphSolution`
+
+        :param solution: The parent :class:`GraphSolution`
+        :type solution: :class:`GraphSolution`
+        :param combination: The sub graph solution combination to apply to the
+        parent :class:`GraphSolution`
+        :type combination: :class:`GraphSolution` |
+        `tuple`[:class:`GraphSolution`]
+        :param event_key: The key of the :class:`EventSolution` in the parent
+        :class:`GraphSolution`
+        :type event_key: `int`
+        :param application_function: The application function used to apply
+        the sub graph solutions to the parent graph solutions
+        :type application_function: :class:`Callable`
+        :return: Returns the combined :class:`GraphSolution`
+        :rtype: :class:`GraphSolution`
+        """
+        solution_copy = deepcopy(solution)
+        if isinstance(combination, tuple):
+            combination_copy = tuple(
+                deepcopy(graph_sol)
+                for graph_sol in combination
             )
-            all_event_combined_solutions.extend(
-                combined_solutions
+        else:
+            combination_copy = deepcopy(
+                combination
             )
-        return all_event_combined_solutions
+        application_function(
+            solution=solution_copy,
+            combination=combination_copy,
+            event_key=event_key
+        )
+        return solution_copy
+
+    @staticmethod
+    def expand_nested_subgraph_event_solutions(
+        event: SubGraphEventSolution,
+        num_loops: int,
+        num_branches: int
+    ) -> None:
+        """MEthod to expand the sub graph within a
+        :class:`SubGraphEventSolution`
+
+        :param event: The :class:`SubGraphEventSolution`
+        :type event: :class:`SubGraphEventSolution`
+        :param num_loops: The number of loops to expand loops by
+        :type num_loops: `int`
+        :param num_branches: The number of branches to expand branches by
+        :type num_branches: `int`
+        """
+        if event.expanded_solutions:
+            return
+        expanded_nested_solutions = []
+        for graph_sol in event.graph_solutions:
+            if graph_sol.loop_events or graph_sol.branch_points:
+                expanded_nested_solutions.extend(
+                    graph_sol.combine_nested_solutions(
+                        num_loops=num_loops,
+                        num_branches=num_branches
+                    )
+                )
+            else:
+                expanded_nested_solutions.append(graph_sol)
+        event.graph_solutions = expanded_nested_solutions
+
+    @staticmethod
+    def input_branch_graph_solutions(
+        solution: GraphSolution,
+        combination: tuple[GraphSolution],
+        event_key: int
+    ) -> None:
+        """Method to input the sub graph solutions of a
+        :class:`BranchEventSolution` into a parent :class:`GraphSolution`
+
+        :param solution: Parent :class:`GraphSolution`
+        :type solution: :class:`GraphSolution`
+        :param combination: The combination of :class:`GraphSolution`'s
+        :type combination: `tuple`[:class:`GraphSolution`]
+        :param event_key: The key within the parent :class:`GraphSolution`
+        with which to identify the :class:`BranchEventSolution` by
+        :type event_key: `int`
+        """
+        event = solution.events[event_key]
+        post_events = copy(event.post_events)
+        for post_event in post_events:
+            post_event.previous_events.remove(event)
+            event.post_events.remove(post_event)
+        for graph_sol in combination:
+            for end_event in graph_sol.end_events.values():
+                end_event.post_events = post_events
+                end_event.add_to_post_events()
+            for start_event in graph_sol.start_events.values():
+                start_event.add_prev_event(event)
+                start_event.add_to_previous_events()
+            solution.parse_event_solutions(
+                list(graph_sol.events.values())
+            )
 
     @staticmethod
     def replace_loop_event_with_sub_graph_solution(
         solution: GraphSolution,
-        loop_solution_combination: GraphSolution,
-        event: LoopEventSolution,
+        combination: GraphSolution,
         event_key: int
     ) -> None:
         """Method to replace a loop event in a :class:`GraphSolution` with a
@@ -729,23 +961,22 @@ class GraphSolution:
         :param loop_solution_combination: :class:`GraphSolution` that will
         replace :class:`LoopEventSolution`
         :type loop_solution_combination: :class:`GraphSolution`
-        :param event: The :class:`LoopEventSolution` that is to be replaced.
-        :type event: :class:`LoopEventSolution`
         :param event_key: The event key for the :class:`LoopEventSolution` for
         lookup.
         :type event_key: `int`
         """
+        event = solution.events[event_key]
         GraphSolution.handle_combine_start_events(
-            loop_solution_combination=loop_solution_combination,
+            loop_solution_combination=combination,
             event=event,
         )
         GraphSolution.handle_combine_end_events(
-            loop_solution_combination=loop_solution_combination,
+            loop_solution_combination=combination,
             event=event,
         )
         solution.remove_event(event_key)
         solution.parse_event_solutions(
-            list(loop_solution_combination.events.values())
+            list(combination.events.values())
         )
 
     @staticmethod
@@ -1031,8 +1262,8 @@ class GraphSolution:
             ax=axis,
             with_labels=True,
             arrows=True,
-            node_size=1600,
-            font_size=20
+            node_size=500,
+            font_size=8
         )
         return fig
 
