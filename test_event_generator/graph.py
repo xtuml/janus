@@ -4,18 +4,20 @@
 Graph class to hold model info
 """
 from typing import Type, Union, Iterable, Optional
+from copy import copy
 
 from ortools.sat.python.cp_model import CpModel, CpSolver, IntVar
 from flatdict import FlatterDict
 import numpy as np
 from test_event_generator.core.edge import Edge
 from test_event_generator.core.group import ORGroup, XORGroup, ANDGroup, Group
-from test_event_generator.core.event import Event, LoopEvent
+from test_event_generator.core.event import Event, LoopEvent, BranchEvent
 from test_event_generator.utils.utils import solve_model_core
 from test_event_generator.solutions import (
     EventSolution,
     LoopEventSolution,
-    GraphSolution
+    GraphSolution,
+    BranchEventSolution
 )
 
 
@@ -83,7 +85,7 @@ class Graph:
                 restricted_key not in key and value
                 for restricted_key in [
                     "type", "loop_graph", "is_loop",
-                    "meta_data"
+                    "meta_data", "branch_graph"
                 ]
             )
         ]
@@ -165,6 +167,10 @@ class Graph:
                 loop_graph=(
                     event_def["loop_graph"] if "loop_graph" in event_def
                     else None
+                ),
+                branch_graph=(
+                    event_def["branch_graph"] if "branch_graph" in event_def
+                    else None
                 )
             )
             self.events[event_uid] = event
@@ -184,13 +190,15 @@ class Graph:
         group_in: Optional[Group] = None,
         group_out: Optional[Group] = None,
         meta_data: Optional[dict] = None,
-        loop_graph: Optional[dict] = None
-    ) -> LoopEvent | Event:
+        loop_graph: Optional[dict] = None,
+        branch_graph: Optional[dict] = None
+    ) -> LoopEvent | Event | BranchEvent:
         """Create :class:`Event` from :class:`CpModel`
         instance, an instance of :class:`Group` (or `None`) for the group into
         the event, an instance of :class:`Group` (or `None`) for the group
-        out of the event, meta_data dictionary if present and loop_graph
-        defintion dictionary if present.
+        out of the event, meta_data dictionary if present, loop_graph
+        defintion dictionary if present and branch_graph definition dictionary
+        if present.
 
         :param model: CP-SAT model
         :type model: :class:`CpModel`
@@ -208,9 +216,9 @@ class Graph:
         :param loop_graph: Standardise graph definiton for a loop event,
         defaults to `None`
         :type loop_graph: :class:`Optional`[`dict`], optional
-        :return: Returns the instance of the created :class:`Event` or
-        :class:`LoopEvent`
-        :rtype: LoopEvent | Event
+        :return: Returns the instance of the created :class:`Event`,
+        :class:`LoopEvent` or :class:`BranchEvent`
+        :rtype: :class:`LoopEvent` | :class:`Event` | :class:`BranchEvent`
         """
 
         kwaargs = {
@@ -230,6 +238,11 @@ class Graph:
             event = LoopEvent(**kwaargs)
             # set the loop event sub graph
             event.set_graph_with_graph_def(loop_graph)
+        elif branch_graph:
+            kwaargs["sub_graph"] = Graph()
+            event = BranchEvent(**kwaargs)
+            # set the branch event sub graph
+            event.set_graph_with_graph_def(branch_graph)
         else:
             event = Event(**kwaargs)
         return event
@@ -387,7 +400,7 @@ class Graph:
             self.solutions["Event"] = self.convert_to_event_solutions(
                 self.solutions["Group"]
             )
-        # solve all loop event subgraphs
+        # solve all loop event subgraphs and branch events
         self.solve_loop_events_sub_graphs(
             loop_events=self.filter_events(self.events.values())
         )
@@ -419,12 +432,17 @@ class Graph:
         return events_solutions
 
     @staticmethod
-    def solve_loop_events_sub_graphs(loop_events: Iterable[LoopEvent]) -> None:
+    def solve_loop_events_sub_graphs(
+        loop_events: Iterable[LoopEvent | BranchEvent]
+    ) -> None:
         """Static method to solve the subgraphs of the :class:`LoopEvent`'s in
-        the iterable input.
+        the iterable input. This will also include :class:`BranchEvent`'s as
+        well.
 
-        :param loop_events: Iterable of :class:`LoopEvent`'s
-        :type loop_events: :class:`Iterable`[:class:`LoopEvent`]
+        :param loop_events: Iterable of :class:`LoopEvent`'s or
+        :class:`BranchEvent`'s
+        :type loop_events: :class:`Iterable`[:class:`LoopEvent` |
+        :class:`BranchEvent`]
         :raises :class:`RuntimeError`: Raises Exception when any of the values
         in the iterable are not instance of :class:`LoopEvent`.
         """
@@ -438,274 +456,260 @@ class Graph:
 
     @staticmethod
     def filter_events(
-        loop_events: Iterable[Union[Event, LoopEvent]]
-    ) -> list[LoopEvent]:
+        loop_events: Iterable[Union[Event, LoopEvent, BranchEvent]]
+    ) -> list[LoopEvent | BranchEvent]:
         """Filters out anything but instances of :class:`LoopEvent` from the
-        input iterable.
+        input iterable, this will include :class:`BranchEvent`'s as well
 
         :param loop_events: Iterable of :class:`Event`
         :type loop_events: :class:`Iterable`[:class:`Union`[:class:`Event`,
-        :class:`LoopEvent`]]
-        :return: Returns a list of :class:`LoopEvent`'s
-        :rtype: `list`[:class:`LoopEvent`]
+        :class:`LoopEvent`, :class:`BranchEvent`]]
+        :return: Returns a list of :class:`LoopEvent`'s and/or
+        :class:`BranchEvent`'s
+        :rtype: `list`[:class:`LoopEvent` | :class:`BranchEvent`]
         """
         return list(filter(lambda x: isinstance(x, LoopEvent), loop_events))
 
-    def expand_solutions(
+    def get_all_combined_graph_solutions(
         self,
         num_loops: int,
         num_branches: int
     ) -> list[GraphSolution]:
-        """Method to expand all obtained solutions and nested solutions and
-        return all valid event sequences
+        """Method to get all expanded and combined graph solutions from the
+        given ILP solutions from given number of loops and branches
 
-        :param num_loops: Number of iterations for any loop
+        :param num_loops: The number of loops a loop should have
         :type num_loops: `int`
-        :param num_branches: Number of branches off any branch event
+        :param num_branches: The number of branches a branch should have
         :type num_branches: `int`
-        :return: Returns a list of all the valid Event sequences
+        :return: Returns a list of all the expanded and combined
+        :class:`GraphSolution`'s
         :rtype: `list`[:class:`GraphSolution`]
         """
-        # process solutions to list of unexpanded GraphSolution's
-        graph_solutions = self.process_solutions(
-            num_loops=num_loops,
-            num_branches=num_branches
+        # recursive create graph solutions for all nested sub graphs
+        graph_solutions = self.get_nested_unexpanded_graph_solutions(
+            graph_events_solutions=self.solutions["Event"],
+            graph_edges_solutions=self.solutions["Edge"],
+            events=self.events
         )
-        # expand processed GraphSolution's
-        expanded_graph_solutions = (
-            self.get_expanded_graph_solutions_from_processed_solutions(
-                graph_solutions=graph_solutions
+        # expand and combine all graph solutions
+        expanded_and_combined_graph_solutions = []
+        for graph_solution in graph_solutions:
+            expanded_and_combined_graph_solutions.extend(
+                graph_solution.combine_nested_solutions(
+                    num_loops=num_loops,
+                    num_branches=num_branches
+                )
             )
-        )
-        return expanded_graph_solutions
+        return expanded_and_combined_graph_solutions
 
     @staticmethod
-    def get_expanded_graph_solutions_from_processed_solutions(
-        graph_solutions: list[GraphSolution],
+    def get_nested_unexpanded_graph_solutions(
+        graph_events_solutions: list[dict[str, int]],
+        graph_edges_solutions: list[dict[str, int]],
+        events: dict[str, "Event"],
     ) -> list[GraphSolution]:
-        """Method to obtain all the possible combinations of
-        :class:`GraphSolution`'s with arbitrarily deep nested loops and
-        branches
+        """Method to get all the nested unexpanded :class:`GraphSolution`'s
+        for all the :class:`Event`'s that contain a subgraph from the ILP
+        solutions provided
 
-        :param graph_solutions: List of processed :class:`GraphSolution`'s
-        :type graph_solutions: `list`[:class:`GraphSolution`]
-        :return: List of :class:`GraphSolution`'s representing all
-        combinations of possible event sequences.
+        :param graph_events_solutions: The list of solution values for each of
+        the :class:`Event`'s for each possible solution
+        :type graph_events_solutions: `list`[`dict`[`str`, `int`]]
+        :param graph_edges_solutions: The list of solution values for each of
+        the :class:`Edge`'s for each possible solution
+        :type graph_edges_solutions: `list`[`dict`[`str`, `int`]]
+        :param events: The dictionary of :class:`Event`'s
+        :type events: `dict`[`str`, :class:`Event`]
+        :return: Returns the list of :class:`GraphSolution`'s
         :rtype: `list`[:class:`GraphSolution`]
         """
-        expanded_graph_solutions: list[GraphSolution] = []
-        for graph_solution in graph_solutions:
-            expanded_graph_solutions.extend(
-                graph_solution.combine_nested_loop_solutions()
+        events_with_sub_graph_event_solutions = {
+            event_uid: Graph.process_sub_graph_event_solution(
+                event=event
             )
-        return expanded_graph_solutions
-
-    def process_solutions(
-        self,
-        num_loops: int,
-        num_branches: int
-    ) -> list[GraphSolution]:
-        """Method to process all solutions from the ILP model into
-        :class:`GraphSolution`'s
-
-        :param num_loops: Number of iterations for any loop
-        :type num_loops: `int`
-        :param num_branches: Number of branches off any branch event
-        :type num_branches: `int`
-        :return: Returns a list of all the processed :class:`GraphSolution`'s
-        :rtype: `list`[:class:`GraphSolution`]
-        """
-        # process valid solutions for loop events sub_graphs
-        loop_events_graph_solutions = self.process_loop_events_solutions(
-            self.events,
-            num_loops=num_loops,
-            num_branches=num_branches
-        )
-        # process all solutions with expanded nested loops and branches
-        graph_solutions = (
-            self.process_all_solutions_with_expanded_nested_loops(
-                events_solutions=self.solutions["Event"],
-                edges_solutions=self.solutions["Edge"],
-                events=self.events,
-                loop_events_graph_solutions=loop_events_graph_solutions,
-                num_loops=num_loops,
-                num_branches=num_branches
+            for event_uid, event in events.items()
+            if isinstance(event, (LoopEvent, BranchEvent))
+        }
+        graph_solutions = Graph.get_unexpanded_graph_solutions(
+            graph_events_solutions=graph_events_solutions,
+            graph_edges_solutions=graph_edges_solutions,
+            events=events,
+            events_with_sub_graph_event_solutions=(
+                events_with_sub_graph_event_solutions
             )
         )
         return graph_solutions
 
     @staticmethod
-    def process_loop_events_solutions(
-        events: dict[str, Event | LoopEvent],
-        num_loops: int,
-        num_branches: int
-    ) -> dict[str, list[GraphSolution]]:
-        """Method to process the solutions of the :class:`LoopEvent`s'
-        sub-graphs
+    def process_sub_graph_event_solution(
+        event: LoopEvent | BranchEvent,
+    ) -> LoopEventSolution | BranchEventSolution:
+        """Method to create a :class:`SubGraphEventSolution` given the type of
+        :class:`Event` and the solutions of its sub graph.
 
-        :param events: Dictionary of :class:`Event`
-        :type events: `dict`[`str`, :class:`Event`  |  :class:`LoopEvent`]
-        :param num_loops: Number of iterations for any loop
-        :type num_loops: `int`
-        :param num_branches: Number of branches off any branch event
-        :type num_branches: `int`
-        :return: Returns a dictionary with event_uid as key and a list of
-        processed :class:`GraphSolution`'s for the loop event as values
-        :rtype: `dict`[`str`, `list`[:class:`GraphSolution`]]
+        :param event: The :class:`LoopEvent` or :class:`BranchEvent`
+        :type event: :class:`LoopEvent` | :class:`BranchEvent`
+        :raises RuntimeError: Raises a :class:`RuntimError` if the instance is
+        not a :class:`BranchEvent` or :class:`LoopEvent`
+        :return: Returns the created :class:`SubGraphEventSolution`
+        :rtype: :class:`LoopEventSolution` | :class:`BranchEventSolution`
         """
-        return {
-            event_uid: event.sub_graph.process_solutions(
-                num_loops=num_loops,
-                num_branches=num_branches
+        if isinstance(event, BranchEvent):
+            class_to_apply = BranchEventSolution
+        elif isinstance(event, LoopEvent):
+            class_to_apply = LoopEventSolution
+        else:
+            raise RuntimeError("Not instance of LoopEvent or BranchEvent")
+        sub_graph = event.sub_graph
+        graph_solutions = (
+            Graph.get_nested_unexpanded_graph_solutions(
+                graph_events_solutions=sub_graph.solutions["Event"],
+                graph_edges_solutions=sub_graph.solutions["Edge"],
+                events=sub_graph.events
             )
-            for event_uid, event in events.items()
-            if isinstance(event, LoopEvent)
-        }
+        )
+        event_solution = class_to_apply(
+            graph_solutions=graph_solutions,
+            meta_data=event.meta_data
+        )
+        return event_solution
 
     @staticmethod
-    def process_all_solutions_with_expanded_nested_loops(
-        events_solutions: list[dict[str, int]],
-        edges_solutions: list[dict[str, int]],
+    def get_unexpanded_graph_solutions(
+        graph_events_solutions: list[dict[str, int]],
+        graph_edges_solutions: list[dict[str, int]],
         events: dict[str, Event],
-        loop_events_graph_solutions: dict[str, list[GraphSolution]],
-        num_loops: int,
-        num_branches: int
+        events_with_sub_graph_event_solutions: dict[
+            str, LoopEventSolution | BranchEventSolution
+        ]
     ) -> list[GraphSolution]:
-        """Method process all the solutions for events into a list of
-        :class:`GraphSolution`'s
+        """Method to generate unexpanded graph solutions for a list of
+        dictionary of event and edge solution values
 
-        :param events_solution: A list of dictionaries of event solutions with
-        event_uid as key and the value of the event as values
-        :type events_solution: `dict`[`str`, `int`]
-        :param edge_solutions: A list of dictionaries of solutions of the
-        edges in the model
-        :type edge_solutions: `dict`[`str`, `int`]
-        :param events: Dictionary of :class:`Event`
+        :param graph_events_solutions: A list of dictionaries that contain the
+        values (0 or 1) of events for a given solution.
+        :type graph_events_solutions: `list`[`dict`[`str`, `int`]]
+        :param graph_edges_solutions: A list of dictionaries that contain the
+        values (0 or 1) of edges for a given solution.
+        :type graph_edges_solutions: `list`[`dict`[`str`, `int`]]
+        :param events: Dictionary with event uid as key and a :class:`Event`
+        as values
         :type events: `dict`[`str`, :class:`Event`]
-        :param loop_events_graph_solutions: Dictionary of a list of
-        :class:`GraphSolution`'s
-        :type loop_events_graph_solutions: `dict`[`str`,
-        `list`[:class:`GraphSolution`]]
-        :param num_loops: Number of iterations for any loop
-        :type num_loops: `int`
-        :param num_branches: Number of branches off any branch event
-        :type num_branches: `int`
-        :return: Returns the list of :class:`GraphSolution`'s found
+        :param events_with_sub_graph_event_solutions: Dictionary containing
+        event uid as key and :class:`SubGraphEventSolution`'s as values.
+        :type events_with_sub_graph_event_solutions: `dict`[ `str`,
+        :class:`LoopEventSolution`  |  :class:`BranchEventSolution` ]
+        :return: Returns a list of the :class:`GraphSolution`'s corresponding
+        to the given event and edge solution values
         :rtype: `list`[:class:`GraphSolution`]
         """
         graph_solutions: list[GraphSolution] = []
-        for event_solutions, edge_solutions in zip(
-            events_solutions,
-            edges_solutions
+        for graph_events_solution, graph_edges_solution in zip(
+            graph_events_solutions, graph_edges_solutions
         ):
-            graph_solution = Graph.process_solution_with_expanded_nested_loops(
-                event_solutions=event_solutions,
+            graph_solution = Graph.get_unexpanded_graph_solution(
+                graph_events_solution=graph_events_solution,
+                graph_edges_solution=graph_edges_solution,
                 events=events,
-                loop_events_graph_solutions=loop_events_graph_solutions,
-                num_loops=num_loops,
-                num_branches=num_branches,
-                edge_solutions=edge_solutions
+                events_with_sub_graph_event_solutions=(
+                    events_with_sub_graph_event_solutions
+                )
             )
             graph_solutions.append(graph_solution)
         return graph_solutions
 
     @staticmethod
-    def process_solution_with_expanded_nested_loops(
-        event_solutions: dict[str, int],
+    def get_unexpanded_graph_solution(
+        graph_events_solution: dict[str, int],
+        graph_edges_solution: dict[str, int],
         events: dict[str, Event],
-        loop_events_graph_solutions: dict[str, list[GraphSolution]],
-        num_loops: int,
-        num_branches: int,
-        edge_solutions: dict[str, int]
+        events_with_sub_graph_event_solutions: dict[
+            str, LoopEventSolution | BranchEventSolution
+        ]
     ) -> GraphSolution:
-        """Method to process a solution of a :class:`Graph` instance
+        """Method to get the :class:`GraphSolution`'s for a solution of event
+        and edge values with any :class:`SubGraphEventSolution`'s unexpanded.
 
-        :param events_solution: A dictionary of event solutions with event_uid
-        as key and the value of the event as values
-        :type events_solution: `dict`[`str`, `int`]
-        :param events: Dictionary of :class:`Event`
+        :param graph_events_solution: A dictionary that contains the
+        values (0 or 1) of events for a given solution.
+        :type graph_events_solution: `dict`[`str`, `int`]
+        :param graph_edges_solution: A dictionary that contains the
+        values (0 or 1) of edges for a given solution.
+        :type graph_edges_solution: `dict`[`str`, `int`]
+        :param events: Dictionary with event uid as key and a :class:`Event`
+        as values
         :type events: `dict`[`str`, :class:`Event`]
-        :param loop_events_graph_solutions: Dictionary of a list of
-        :class:`GraphSolution`'s
-        :type loop_events_graph_solutions: `dict`[`str`,
-        `list`[:class:`GraphSolution`]]
-        :param num_loops: Number of iterations for any loop
-        :type num_loops: `int`
-        :param num_branches: Number of branches off any branch event
-        :type num_branches: `int`
-        :param edge_solutions: Dictionary of solutions of the edges in the
-        model
-        :type edge_solutions: `dict`[`str`, `int`]
-        :return: A :class:`GraphSolution` of the input solution
+        :param events_with_sub_graph_event_solutions: Dictionary containing
+        event uid as key and :class:`SubGraphEventSolution`'s as values.
+        :type events_with_sub_graph_event_solutions: `dict`[ `str`,
+        :class:`LoopEventSolution`  |  :class:`BranchEventSolution` ]
+        :return: Returns a :class:`GraphSolution`'s corresponding
+        to the given event and edge solution values
         :rtype: :class:`GraphSolution`
         """
-        # create and get the EventSolution instances
-        event_solution_instances = Graph.get_event_solution_objects(
-            event_solutions=event_solutions,
+        event_solution_instances = Graph.get_event_solution_instances(
+            graph_events_solution=graph_events_solution,
             events=events,
-            loop_events_graph_solutions=loop_events_graph_solutions
+            events_with_sub_graph_event_solutions=(
+                events_with_sub_graph_event_solutions
+            )
         )
-        # link all the Event solutions to previous and post events
         Graph.update_connected_events_for_all_event_solutions(
-            event_solutions=event_solution_instances,
+            event_solution_instances=event_solution_instances,
             events=events,
-            edge_solutions=edge_solutions
+            graph_edges_solution=graph_edges_solution
         )
-        # create the GraphSolution instance and expand any nested branches or
-        # loops
         graph_solution = GraphSolution()
         graph_solution.parse_event_solutions(
             list(event_solution_instances.values())
         )
-        graph_solution.expand_graph_solutions(
-            num_loops=num_loops,
-            num_branches=num_branches
-        )
         return graph_solution
 
     @staticmethod
-    def get_event_solution_objects(
-        event_solutions: dict[str, int],
+    def get_event_solution_instances(
+        graph_events_solution: dict[str, int],
         events: dict[str, Event],
-        loop_events_graph_solutions: dict[str, list[GraphSolution]]
-    ) -> dict[str, EventSolution | LoopEventSolution]:
-        """Method to get the dictionary of :class:`EventSolution` instances.
+        events_with_sub_graph_event_solutions: dict[
+            str, LoopEventSolution | BranchEventSolution
+        ]
+    ) -> dict[str, EventSolution | LoopEventSolution | BranchEventSolution]:
+        """_summary_
 
-        :param events_solution: The dictionary of solutions with event_uid as
-        key and value of the event as values
-        :type events_solution: `dict`[`str`, `int`]
-        :param events: Dictionary of events
+        :param graph_events_solution: A dictionary that contains the
+        values (0 or 1) of events for a given solution.
+        :type graph_events_solution: `dict`[`str`, `int`]
+        :param events: Dictionary with event uid as key and a :class:`Event`
+        as values
         :type events: `dict`[`str`, :class:`Event`]
-        :param loop_events_graph_solutions: Dictionary of list of
-        :class:`GraphSolution`'s that relate to the loop event's sub-graph.
-        :type loop_events_graph_solutions: `dict`[`str`,
-        `list`[:class:`GraphSolution`]]
-        :return: Returns a dictionary of :class:`EventSolution` with event_uid
-        as key
+        :param events_with_sub_graph_event_solutions: Dictionary containing
+        event uid as key and :class:`SubGraphEventSolution`'s as values.
+        :type events_with_sub_graph_event_solutions: `dict`[ `str`,
+        :class:`LoopEventSolution`  |  :class:`BranchEventSolution` ]
+        :return: Returns a dictionary of the :class:`EventSolution` instances
+        for the given solution
         :rtype: `dict`[`str`, :class:`EventSolution` |
-        :class:`LoopEventSolution`]
+        :class:`LoopEventSolution` | :class:`BranchEventSolution`]
         """
         return {
             event_uid: (
                 EventSolution(
                     meta_data=events[event_uid].meta_data,
                     **events[event_uid].meta_data
-                ) if event_uid not in loop_events_graph_solutions
-                else LoopEventSolution(
-                    graph_solutions=loop_events_graph_solutions[event_uid],
-                    meta_data=events[event_uid].meta_data,
-                    **events[event_uid].meta_data
+                ) if event_uid not in events_with_sub_graph_event_solutions
+                else copy(
+                    events_with_sub_graph_event_solutions[event_uid]
                 )
             )
-            for event_uid, event_solution in event_solutions.items()
+            for event_uid, event_solution in graph_events_solution.items()
             if event_solution == 1
         }
 
     @staticmethod
     def update_connected_events_for_all_event_solutions(
-        event_solutions: dict[str, EventSolution],
+        event_solution_instances: dict[str, EventSolution],
         events: dict[str, Event],
-        edge_solutions: dict[str, int]
+        graph_edges_solution: dict[str, int]
     ) -> None:
         """Method to update all the previous and post events lists for all the
         given :class:`EventSolution`'s
@@ -720,21 +724,21 @@ class Graph:
         values of the edges
         :type edge_solutions: `dict`[`str`, `int`]
         """
-        for event_uid, event_solution in event_solutions.items():
+        for event_uid, event_solution in event_solution_instances.items():
             event = events[event_uid]
             Graph.update_connected_events(
                 event=event,
                 event_solution=event_solution,
-                event_solutions=event_solutions,
-                edge_solutions=edge_solutions
+                event_solution_instances=event_solution_instances,
+                graph_edges_solution=graph_edges_solution
             )
 
     @staticmethod
     def update_connected_events(
         event: Event,
         event_solution: EventSolution,
-        event_solutions: dict[str, EventSolution],
-        edge_solutions: dict[str, int]
+        event_solution_instances: dict[str, EventSolution],
+        graph_edges_solution: dict[str, int]
     ) -> None:
         """Method to add previous and post events to the :class:`EventSolution`
         based on links described using the edge solutions.
@@ -753,22 +757,22 @@ class Graph:
         Graph.update_prev_events(
             event=event,
             event_solution=event_solution,
-            event_solutions=event_solutions,
-            edge_solutions=edge_solutions
+            event_solution_instances=event_solution_instances,
+            graph_edges_solution=graph_edges_solution
         )
         Graph.update_post_events(
             event=event,
             event_solution=event_solution,
-            event_solutions=event_solutions,
-            edge_solutions=edge_solutions
+            event_solution_instances=event_solution_instances,
+            graph_edges_solution=graph_edges_solution
         )
 
     @staticmethod
     def update_prev_events(
         event: Event,
         event_solution: EventSolution,
-        event_solutions: dict[str, EventSolution],
-        edge_solutions: dict[str, int]
+        event_solution_instances: dict[str, EventSolution],
+        graph_edges_solution: dict[str, int]
     ) -> None:
         """Method to add previous events to the :class:`EventSolution`
         based on links described using the edge solutions.
@@ -785,17 +789,17 @@ class Graph:
         :type edge_solutions: `dict`[`str`, `int`]
         """
         for edge_uid, in_edge in event.in_edges.items():
-            if edge_solutions[edge_uid] == 1:
+            if graph_edges_solution[edge_uid] == 1:
                 event_solution.add_prev_event(
-                    event_solutions[in_edge.event_out.uid]
+                    event_solution_instances[in_edge.event_out.uid]
                 )
 
     @staticmethod
     def update_post_events(
         event: Event,
         event_solution: EventSolution,
-        event_solutions: dict[str, EventSolution],
-        edge_solutions: dict[str, int]
+        event_solution_instances: dict[str, EventSolution],
+        graph_edges_solution: dict[str, int]
     ) -> None:
         """Method to add post events to the :class:`EventSolution`
         based on links described using the edge solutions.
@@ -812,7 +816,7 @@ class Graph:
         :type edge_solutions: `dict`[`str`, `int`]
         """
         for edge_uid, out_edge in event.out_edges.items():
-            if edge_solutions[edge_uid] == 1:
+            if graph_edges_solution[edge_uid] == 1:
                 event_solution.add_post_event(
-                    event_solutions[out_edge.event_in.uid]
+                    event_solution_instances[out_edge.event_in.uid]
                 )

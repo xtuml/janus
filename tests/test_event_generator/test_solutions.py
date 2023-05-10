@@ -2,8 +2,10 @@
 """
 Tests for solutions.py
 """
-from copy import deepcopy
+from copy import deepcopy, copy
 import re
+from itertools import combinations_with_replacement
+
 import pytest
 import networkx as nx
 
@@ -11,6 +13,7 @@ from test_event_generator.solutions import (
     EventSolution,
     GraphSolution,
     LoopEventSolution,
+    BranchEventSolution,
     get_audit_event_jsons_and_templates,
     get_categorised_audit_event_jsons
 )
@@ -18,7 +21,6 @@ from tests.utils import (
     check_length_attr,
     check_solution_correct,
     check_multiple_solutions_correct,
-    add_event_type_suffix
 )
 
 
@@ -745,19 +747,15 @@ class TestGraphSolution:
     @staticmethod
     def test_add_event_branch_point(
         graph_solution: GraphSolution,
-        event_solution: EventSolution,
         prev_event_solution: EventSolution,
         post_event_solution: EventSolution
     ) -> None:
-        """Tests adding an :class:`EventSolution` that is a branch point to the
+        """Tests adding a :class:`BranchEventSolution` to the
         graph solution using the method :class:`GraphSolution`.`add_event`
 
         :param graph_solution: A pre instantiated empty :class:`GraphSolution`
         instance
         :type graph_solution: :class:`GraphSolution`
-        :param event_solution: A pre-instantiated :class:`EventSolution`
-        instance
-        :type event_solution: :class:`EventSolution`
         :param prev_event_solution: A pre-instantiated :class:`EventSolution`
         instance
         :type prev_event_solution: :class:`EventSolution`
@@ -765,19 +763,21 @@ class TestGraphSolution:
         instance
         :type post_event_solution: :class:`EventSolution`
         """
-        event_solution.is_branch = True
-        event_solution.add_prev_event(prev_event_solution)
-        event_solution.add_post_event(post_event_solution)
-        graph_solution.add_event(event_solution)
+        branch_event_solution = BranchEventSolution(
+            graph_solutions=[GraphSolution()]
+        )
+        branch_event_solution.add_prev_event(prev_event_solution)
+        branch_event_solution.add_post_event(post_event_solution)
+        graph_solution.add_event(branch_event_solution)
         # there must be only one event added to the graph solution
         assert graph_solution.event_dict_count == 1
         # event_solution must be at key 1 in the graph solutions event
         # dictionary
-        assert graph_solution.events[1] == event_solution
-        # event_solution must be at key 1 in the graph solutions branch points
+        assert graph_solution.events[1] == branch_event_solution
+        # event_solution must be at key 1 in the graph solutions branch events
         # dictionary
-        assert graph_solution.branch_points[1] == event_solution
-        # there must be only 1 branch point and only 1 event in the graph
+        assert graph_solution.branch_points[1] == branch_event_solution
+        # there must be only 1 loop event and only 1 event in the graph
         # solution
         assert check_length_attr(
             graph_solution,
@@ -916,8 +916,8 @@ class TestGraphSolution:
         :rtype: list[:class:`EventSolution`]
         """
         # create branch, break and loop events
-        branch_event_solution = EventSolution(
-            is_branch=True,
+        branch_event_solution = BranchEventSolution(
+            [GraphSolution()],
             meta_data={
                 "EventType": "Branch"
             }
@@ -1507,7 +1507,7 @@ def loop_event_solution(
     graph_with_break.break_points[3] = graph_with_break.events[3]
     loop_event = LoopEventSolution(
         graph_solutions=[
-            graph_simple,
+            deepcopy(graph_simple),
             deepcopy(graph_simple),
             graph_with_break
         ]
@@ -1715,7 +1715,7 @@ class TestLoopEventSolution:
         three :class:`GraphSolution` instances, one with a break point.
         :type loop_event_solution: :class:`LoopEventSolution`
         """
-        loop_event_solution.expand_loops(3)
+        loop_event_solution.expand(3)
         # check the loops have been expanded correctly
         TestLoopEventSolution.check_expanded_loops(loop_event_solution)
 
@@ -1742,24 +1742,55 @@ class TestLoopEventSolution:
         assert num_of_solutions_with_breaks == 7
 
 
-@pytest.fixture()
-def graph_simple_with_branch(
+@pytest.fixture
+def graph_single_event(
+    event_solution: EventSolution
+) -> GraphSolution:
+    graph = GraphSolution()
+    graph.add_event(deepcopy(event_solution))
+    return graph
+
+
+@pytest.fixture
+def branch_event_solution(
+    graph_single_event: GraphSolution,
     graph_simple: GraphSolution
+) -> BranchEventSolution:
+    branch_event = BranchEventSolution(
+        graph_solutions=[
+            deepcopy(graph_single_event),
+            deepcopy(graph_simple)
+        ],
+        meta_data={
+            "EventType": "Branch"
+        }
+    )
+    return branch_event
+
+
+@pytest.fixture()
+def graph_with_branch(
+    branch_event_solution: BranchEventSolution,
+    prev_event_solution: EventSolution,
+    post_event_solution: EventSolution,
 ) -> GraphSolution:
     """Fixture to generate a :class:`GraphSolution` with a branch point. The
     sequence is
 
-    (Start)->(Middle, is_branch=True)->(End)
+    (Start)->(Branch, graph_solutions = [
+        (Middle),
+        (Start)->(Middle)->(End)
+    ])->(End)
 
-    :param graph_simple: Fixture for simple 3 event
-    sequence
-    :type graph_simple: :class:`GraphSolution`
-    :return: Returns the :class:`GraphSolution` with a branch point
-    :rtype: :class:`GraphSolution`
     """
-    graph = deepcopy(graph_simple)
-    graph.events[2].is_branch = True
-    graph.branch_points[2] = graph.events[2]
+    branch_event = deepcopy(branch_event_solution)
+    prev_event = deepcopy(prev_event_solution)
+    post_event = deepcopy(post_event_solution)
+    branch_event.add_prev_event(prev_event)
+    branch_event.add_post_event(post_event)
+    branch_event.add_to_connected_events()
+    graph = GraphSolution()
+    graph.parse_event_solutions([prev_event, branch_event, post_event])
     return graph
 
 
@@ -1833,240 +1864,78 @@ def graph_with_nested_loop(
     :rtype: :class:`GraphSolution`
     """
     graph = deepcopy(graph_with_loop)
-    for event in graph.events.values():
-        event.meta_data["EventType"] += "_upper"
+    # for event in graph.events.values():
+    #     event.meta_data["EventType"] += "_upper"
     nested_loop_graph = deepcopy(graph_with_loop)
-    for event in nested_loop_graph.events.values():
-        event.meta_data["EventType"] += "_nested"
+    # for event in nested_loop_graph.events.values():
+    #     event.meta_data["EventType"] += "_nested"
     graph.loop_events[2].graph_solutions = [
         deepcopy(nested_loop_graph)
     ]
     return graph
 
 
+class TestBranchEventSolution:
+    """Class to test methods of :class:`BranchEventSolution`
+    """
+    @staticmethod
+    def test_expand(
+        branch_event_solution: BranchEventSolution
+    ) -> None:
+        """Tests :class:`BranchEventSolution`.`expand`
+
+        :param branch_event_solution: Fixture providing a
+        :class:`BranchEventSolution`
+        :type branch_event_solution: :class:`BranchEventSolution`
+        """
+        branch_event_solution.expand(
+            num_expansion=2
+        )
+        TestBranchEventSolution.check_branch_point_expanded_solutions(
+            branch_event_solution
+        )
+
+    @staticmethod
+    def check_branch_point_expanded_solutions(
+        branch_point: BranchEventSolution
+    ) -> None:
+        """Method to check that the given test :class:`BranchEventSolution`
+        has been expanded correctly
+
+        :param branch_point: The :class:`BranchEventSolution`
+        :type branch_point: :class:`BranchEventSolution`
+        """
+        # solutions should have been expanded
+        assert branch_point.expanded_solutions
+        # there should be 4 combinations
+        assert len(branch_point.expanded_solutions) == 3
+        results_all = []
+        # checks that the 4 combinations are distinct
+        for solution in branch_point.expanded_solutions:
+            # each solution should have a length of 2
+            assert len(solution) == 2
+            results = []
+            for i in range(2):
+                for j in range(2):
+                    if (
+                        solution[0] == branch_point.graph_solutions[i]
+                        and solution[1] == branch_point.graph_solutions[j]
+                    ):
+                        results.append((i, j))
+            results_all.extend(results)
+        assert len(results_all) == 3
+        assert all(
+            results_all[i] != results_all[j]
+            for i in range(3)
+            for j in range(3)
+            if i != j
+        )
+
+
 class TestGraphSolutionsExpansions:
     """Tests of :class:`GraphSolution` for the expansion of loops and branch
     points.
     """
-    @staticmethod
-    def test_expand_loop_events(
-        loop_event_solution: LoopEventSolution
-    ) -> None:
-        """Tests the method :class:`GraphSolution`.`expand_loop_events`. Test
-        for :class:`GraphSolution` with four :class:`LoopEventSolution`'s
-        containing 3 :class:`GraphSolution` sub graph solutions, one which has
-        a break point. Loops are set to have a length of 3.
-
-        :param loop_event_solution: Fixture for :class:`LoopEventSolution`
-        with 3 sub-graph solutions
-        :type loop_event_solution: :class:`LoopEventSolution`
-        """
-        events = [deepcopy(loop_event_solution) for _ in range(4)]
-        graph = GraphSolution()
-        graph.parse_event_solutions(events=events)
-        graph.expand_loop_events(3)
-        # the loop events sub-graphs must have been expanded correctly
-        for loop_event in graph.loop_events.values():
-            TestLoopEventSolution.check_expanded_loops(loop_event)
-
-    @staticmethod
-    def test_expand_branch_events(
-        graph_simple_with_branch: GraphSolution
-    ) -> None:
-        """Tests the method :class:`GraphSolution`.`expand_branch_events`.
-        Tests for a :class:`GraphSolution` with a simple 6 event sequence and
-        two branch events. Tests for expanding the branches out by 2.
-        The graph to be tested is
-
-        (Start)->(Middle, is_branch=True)->(End)->(Start)->(
-            Middle, is_branch=True
-        )->(End)
-
-        The resulting graph after expansion should look like (omitted
-        is_branch=True on branch events)
-
-                           ->(End)-|                 ->(End)
-                          |        V                |
-        (Start)->(Middle)-|        (Start)-(Middle)-|
-                          |        ^                |
-                           ->(End)-|                 ->(End)
-
-        :param graph_simple_with_branch: Fixture of a :class:`GraphSolution`
-        instance with branch points
-        :type graph_simple_with_branch: :class:`GraphSolution`
-        """
-        graph_two_branches = (
-            graph_simple_with_branch + graph_simple_with_branch
-        )
-        # there should be 6 events in the GraphSolution
-        assert len(graph_two_branches.events) == 6
-        graph_two_branches.expand_branch_events(
-            2
-        )
-        # after expansion of branch points there should be 8 events
-        assert len(graph_two_branches.events) == 8
-        # There should be 2 post events for each of the branch points
-        assert all(
-            len(branch_event.post_events) == 2
-            for branch_event in graph_two_branches.branch_points.values()
-        )
-        # check that the post events exist and are part of the GraphSolution
-        assert all(
-            branch_event.post_events[0] == graph_two_branches.events[3 * i + 3]
-            and (
-                branch_event.post_events[1]
-            ) == (
-                graph_two_branches.events[7 + i]
-            )
-            for i, branch_event in enumerate(
-                graph_two_branches.branch_points.values()
-            )
-        )
-
-    @staticmethod
-    def test_expand_graph_solutions_nested_loop(
-        graph_with_nested_loop: GraphSolution
-    ) -> None:
-        """Tests the method :class:`GraphSolution`.`expand_graph_solutions`
-        for a graph with a nested loop. Tests for expanding for loops of size
-        2. This test should produce an expansion for the upper loop of
-
-        (Start_nested)->(Middle_nested)->(End_nested)->(Start_nested)->(
-            Middle_nested
-        )->(End_nested)
-
-        and for the nested loop
-
-        (Middle)->(Middle)
-
-        :param graph_with_nested_loop: Fixture of :class:`GraphSolution`
-        containing a :class:`LoopEventSolution` with a sub graph that also
-        contains a :class:`LoopEventSolution` that contains a sub-graph with a
-        single event
-        :type graph_with_nested_loop: :class:`GraphSolution`
-        """
-        graph_with_nested_loop.expand_graph_solutions(
-            num_branches=1,
-            num_loops=2
-        )
-        upper_loop_expanded_solutions = (
-            graph_with_nested_loop.loop_events[2].expanded_solutions
-        )
-        # The legnth of the expanded solutions for the upper loop event must
-        # be 1
-        assert (
-            len(upper_loop_expanded_solutions)
-        ) == 1
-        nested_loop_expanded_solutions = (
-            upper_loop_expanded_solutions[0].loop_events[2].expanded_solutions
-        )
-        # The legnth of the expanded solutions for the nested loop event must
-        # be 1
-        assert (
-            len(nested_loop_expanded_solutions)
-        ) == 1
-        upper_loop_expanded_solution = upper_loop_expanded_solutions[0]
-        # There must be 6 events in the expanded loop
-        assert len(upper_loop_expanded_solution.events) == 6
-        # checks that the simple sequence of events is correct
-        assert check_solution_correct(
-            solution=upper_loop_expanded_solution,
-            event_types=["Start_nested", "Loop_nested", "End_nested"] * 2
-        )
-        nested_loop_expanded_solution = nested_loop_expanded_solutions[0]
-        # there must be two events in the expanded nested loop
-        assert len(nested_loop_expanded_solution.events) == 2
-        # checks that the simple sequence of events is correct
-        assert check_solution_correct(
-            solution=nested_loop_expanded_solution,
-            event_types=["Middle"] * 2,
-        )
-
-    @staticmethod
-    def test_expand_graph_solutions_branch_point(
-        graph_simple_with_branch: GraphSolution
-    ) -> None:
-        """Tests the method :class:`GraphSolution`.`expand_graph_solutions`
-        for a graph with a branch point. Tests for expanding for branches of
-        size 2. This test should produce an expansion for graph of
-
-                          ->(End)
-        (Start)->(Middle)-|
-                          ->(End)
-
-        :param graph_simple_with_branch: Fixture for a :class:`GraphSolution`
-        with a branch point.
-        :type graph_simple_with_branch: :class:`GraphSolution`
-        """
-        graph_simple_with_branch.expand_graph_solutions(
-            num_branches=2,
-            num_loops=1
-        )
-        # there should be 4 events
-        assert len(graph_simple_with_branch.events) == 4
-        # the number of events after the branch point should be 2
-        assert len(graph_simple_with_branch.branch_points[2].post_events) == 2
-        # the event type for the events after the branch point should be "End"
-        assert (
-            event.meta_data["EventType"] == "End"
-            for event in graph_simple_with_branch.branch_points[2].post_events
-        )
-
-    @staticmethod
-    def test_expand_graph_solutions_nested_loop_with_branch_point(
-        graph_simple_with_branch: GraphSolution,
-        graph_with_loop: GraphSolution
-    ) -> None:
-        """Tests method :class:`GraphSolution`.`expand_graph_solutions`.
-        Expands a :class:`GraphSolution` with a loop event with a sub grpah
-        solution with a branch point within that loop event. The graph is
-        expanded for loops of size 2 and branches of size 2. The parent graph
-        is
-
-        (Start)->(Loop)->(End)
-
-        the sub-graph is
-
-        (Start)->(Middle, is_branch=True)->(End)
-
-        The expanded loop with expanded branched should be (is_branch omitted)
-
-                           ->(End)-|                 ->(End)
-                          |        V                |
-        (Start)->(Middle)-|        (Start)-(Middle)-|
-                          |        ^                |
-                           ->(End)-|                 ->(End)
-
-
-        :param graph_simple_with_branch: Fixture for :class:`GraphSolution`
-        with a branch point
-        :type graph_simple_with_branch: :class:`GraphSolution`
-        :param graph_with_loop: Fixture for :class:`GraphSolution` with a loop
-        event
-        :type graph_with_loop: :class:`GraphSolution`
-        """
-        loop_event = graph_with_loop.loop_events[2]
-        loop_event.graph_solutions = [
-            graph_simple_with_branch
-        ]
-        graph_with_loop.expand_graph_solutions(
-            num_branches=2,
-            num_loops=2
-        )
-        # the number of expanded solutions should be 1
-        assert len(loop_event.expanded_solutions) == 1
-        expanded_solution = loop_event.expanded_solutions[0]
-        # the number of events in the expansions should be 8
-        assert len(expanded_solution.events) == 8
-        events = expanded_solution.events
-        # check that post events are correct for branch points
-        assert (
-            events[2].post_events[0] == events[3]
-        ) and events[2].post_events[1] == events[4]
-        assert (
-            events[6].post_events[0] == events[7]
-        ) and events[6].post_events[1] == events[8]
-
     @staticmethod
     def test_handle_combine_start_events(
         graph_with_loop: GraphSolution,
@@ -2177,12 +2046,38 @@ class TestGraphSolutionsExpansions:
         loop_event = graph_with_loop.loop_events[2]
         GraphSolution.replace_loop_event_with_sub_graph_solution(
             solution=graph_with_loop,
-            loop_solution_combination=graph_simple,
-            event=loop_event,
+            combination=graph_simple,
             event_key=2
         )
-        # the lenght of the resulting graph should be 5 events
-        assert len(graph_with_loop.events) == 5
+        TestGraphSolutionsExpansions.check_loop_replacement(
+            graph_with_loop=graph_with_loop,
+            loop_event=loop_event
+        )
+
+    @staticmethod
+    def check_loop_replacement(
+        graph_with_loop: GraphSolution,
+        loop_event: LoopEventSolution
+    ) -> None:
+        """Method to check that the given recombined loop solution are correct
+
+        :param graph_with_loop: The :class:`GraphSolution` that the loop sub
+        :class:`GraphSolution` has been recombined with
+        :type graph_with_loop: :class:`GraphSolution`
+        :param loop_event: The :class:`LoopEventSolution` that has been
+        replaced in the parent :class:`GraphSolution`
+        :type loop_event: :class:`LoopEventSolution`
+        """
+        # check attributes are correct
+        assert check_length_attr(
+            graph_with_loop,
+            lens=[1, 5, 0, 0, 1, 0],
+            attrs=[
+                "start_events", "events",
+                "branch_points", "break_points",
+                "end_events", "loop_events"
+            ]
+        )
         # the loop event should not be in the event dictionary
         assert loop_event not in list(graph_with_loop.events.values())
         # the loop event should not be in the loop event dictionary
@@ -2200,119 +2095,809 @@ class TestGraphSolutionsExpansions:
         )
 
     @staticmethod
-    def test_combine_nested_loop_solutions(
-        graph_simple_with_branch: GraphSolution,
-        graph_with_loop: GraphSolution,
-        prev_event_solution: GraphSolution,
-        post_event_solution: GraphSolution
+    def test_input_branch_graph_solutions(
+        graph_with_branch: GraphSolution,
+        graph_simple: GraphSolution,
+        graph_single_event: GraphSolution
     ) -> None:
-        """tests the method
-        :class:`GraphSolution`.`combine_nested_loop_solutions`. The structure
-        of the graph solution to be tested is given below.
+        """Tests the method
+        :class:`GraphSolution`.`input_branch_graph_solutions` for the
+        following setup:
 
-        The parent graph is:
+        (Start)->(Branch)->(End)
 
-        * (Start_upper)->(Loop_upper)->(End_upper)
+        The sub-graph solution combination of the Branch event is
 
-        Loop_upper contains two graph solutions:
+        (Start)->(Middle)->(End)
 
-        * (Start_first_loop_with_loop)->(Loop_first_loop_with_loop)->(
-           End_first_loop_with_loop
-        )
-        * (Start_first_loop_with_branch)->(
-            Middle_first_loop_with_branch, is_branch=True
-        )->(End_first_loop_with_branch)
+        (Middle)
 
-        Loop_first_loop_with_branch contains a single event graph solution:
+        The resulting sequence after branch expansion should be
 
-        * (Middle)
+                          ->(Middle)-----------------|
+        (Start)->(Branch)-|                          |->(End)
+                          ->(Start)->(Middle)->(End)-|
 
-        :param graph_simple_with_branch: Fixture for :class:`GraphSolution`
-        with a branch point
-        :type graph_simple_with_branch: :class:`GraphSolution`
-        :param graph_with_loop: Fixture for :class:`GraphSolution` with a loop
-        event
-        :type graph_with_loop: :class:`GraphSolution`
-        :param prev_event_solution: Fixture Start :class:`EventSolution`
-        :type prev_event_solution: :class:`EventSolution`
-        :param post_event_solution: Fixture End :class:`EventSolution`
-        :type post_event_solution: :class:`EventSolution`
+        :param graph_with_branch: Fixture providing a :class:`GraphSolution`
+        containing a :class:`BranchEventSolution`
+        :type graph_with_branch: :class:`GraphSolution`
+        :param graph_simple: Fixture providing a :class:`GraphSolution` of a
+        simple 3 event sequence
+        :type graph_simple: :class:`GraphSolution`
+        :param graph_single_event: Fixture providing a :class:`GraphSolution`
+        with a single :class:`EventSolution`
+        :type graph_single_event: :class:`GraphSolution`
         """
+        event_key = 2
+        event = graph_with_branch.events[2]
+        post_event = graph_with_branch.events[3]
+        combination = (
+            graph_simple,
+            graph_single_event
+        )
+        GraphSolution.input_branch_graph_solutions(
+            solution=graph_with_branch,
+            combination=combination,
+            event_key=event_key
+        )
+        # check attributes are correct
+        assert check_length_attr(
+            graph_with_branch,
+            lens=[1, 7, 1, 0, 1, 0],
+            attrs=[
+                "start_events", "events",
+                "branch_points", "break_points",
+                "end_events", "loop_events"
+            ]
+        )
+        # check that the branch event and its previously following event have
+        # been disconnected
+        assert event not in post_event.previous_events
+        assert post_event not in event.post_events
+        # check start events of branch combinations are correct
+        assert graph_simple.events[1] in event.post_events
+        assert graph_single_event.events[1] in event.post_events
+        assert event in graph_simple.events[1].previous_events
+        assert event in graph_single_event.events[1].previous_events
+        # check end event of branch combinations are correct
+        assert graph_simple.events[3] in post_event.previous_events
+        assert graph_single_event.events[1] in post_event.previous_events
+        assert post_event in graph_simple.events[3].post_events
+        assert post_event in graph_single_event.events[1].post_events
+        # check one path
+        assert check_solution_correct(
+            solution=graph_with_branch,
+            event_types=[
+                "Start", "Branch", "Start", "Middle", "End", "End"
+            ]
+        )
+        # check the other path by reversing the branch events post events list
+        event.post_events = list(reversed(event.post_events))
+        assert check_solution_correct(
+            solution=graph_with_branch,
+            event_types=[
+                "Start", "Branch", "Middle", "End"
+            ]
+        )
 
-        upper_graph = GraphSolution()
-        loop_event = LoopEventSolution(
-            graph_solutions=[
-                graph_with_loop,
-                graph_simple_with_branch
-            ],
-            meta_data={"EventType": "Loop"}
+    @staticmethod
+    def test_expand_nested_sub_graph_event_solution_loop_no_nesting(
+        loop_event_solution: LoopEventSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`expand_nested_subgraph_event_solutions` for a
+        :class:`LoopEventSolution` when the sub :class:`GraphSolution`'s
+        contain no :class:`SubGraphEventSolution`'s
+
+        :param loop_event_solution: Fixture prvoding a
+        :class:`LoopEventSolution`
+        :type loop_event_solution: :class:`LoopEventSolution`
+        """
+        TestGraphSolutionsExpansions.check_events_no_nesting(
+            loop_event_solution
         )
-        loop_event.add_prev_event(prev_event_solution)
-        loop_event.add_post_event(post_event_solution)
-        loop_event.add_to_connected_events()
-        upper_graph.parse_event_solutions(
-            [prev_event_solution, loop_event, post_event_solution]
+
+    @staticmethod
+    def test_expand_nested_sub_graph_event_solution_branch_no_nesting(
+        branch_event_solution: BranchEventSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`expand_nested_subgraph_event_solutions` for a
+        :class:`BranchEventSolution` when the sub :class:`GraphSolution`'s
+        contain no :class:`SubGraphEventSolution`'s
+
+        :param branch_event_solution: Fixture prvoding a
+        :class:`BranchEventSolution`
+        :type branch_event_solution: :class:`BranchEventSolution`
+        """
+        TestGraphSolutionsExpansions.check_events_no_nesting(
+            branch_event_solution
         )
-        add_event_type_suffix(
-            upper_graph.events.values(),
-            "upper"
+
+    @staticmethod
+    def check_events_no_nesting(
+        event: BranchEventSolution | LoopEventSolution
+    ) -> None:
+        """Method to check the method
+        :class:`GraphSolution`.`expand_nested_subgraph_event_solutions` is not
+        affecting the given :class:`SubGraphEventSolution`'s when it has no
+        nested :class:`SubGraphEventSolution`'s
+
+        :param event: The :class:`SubGraphEventSolution` to test
+        :type event: :class:`BranchEventSolution` | :class:`LoopEventSolution`
+        """
+        sub_graph_solutions = event.graph_solutions
+        GraphSolution.expand_nested_subgraph_event_solutions(
+            event=event,
+            num_loops=3,
+            num_branches=2
         )
-        add_event_type_suffix(
-            graph_simple_with_branch.events.values(),
-            "first_loop_branch"
+        expanded_sub_graph_solutions = event.graph_solutions
+        assert all(
+            before_expansion == after_expansion
+            for before_expansion, after_expansion in zip(
+                sub_graph_solutions, expanded_sub_graph_solutions
+            )
         )
-        add_event_type_suffix(
-            graph_with_loop.events.values(),
-            "first_loop_with_loop"
+
+    @staticmethod
+    def test_apply_sub_graph_event_solution_sub_graph_loop(
+        graph_with_loop: GraphSolution,
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`apply_sub_graph_event_solution_sub_graph`
+        for a :class:`GraphSolution` with a :class:`LoopEventSolution` by
+        applying a simple 3 sequence :class:`GraphSolution` in its place using
+        :class:`GraphSolution`.`replace_loop_event_with_sub_graph_solution` as
+        the application function.
+
+        The parent sequence is:
+
+        (Start)->(Loop)->(End)
+
+        The sequence to replace the loop event and combine into the parent
+        sequence is:
+
+        (Start)->(Middle)->(End)
+
+        The resulting sequence after application
+        should be
+
+        (Start)->(Start)->(Middle)->(End)->(End)
+
+        :param graph_with_loop: Fixture providing a :class:`GraphSolution`
+        containing a :class:`LoopEventSolution`
+        :type graph_with_loop: :class:`GraphSolution`
+        :param graph_simple: Fixture providing a simple 3
+        :class:`EventSolution` sequence :class:`GraphSolution`
+        :type graph_simple: :class:`GraphSolution`
+        """
+        graph_replaced = (
+            GraphSolution.apply_sub_graph_event_solution_sub_graph(
+                solution=graph_with_loop,
+                combination=graph_simple,
+                event_key=2,
+                application_function=(
+                    GraphSolution.replace_loop_event_with_sub_graph_solution
+                )
+            )
         )
-        add_event_type_suffix(
-            graph_with_loop.loop_events[2].graph_solutions[0].events.values(),
-            "nested_loop"
+        # check that the grpah solution is correct
+        check_solution_correct(
+            solution=graph_replaced,
+            event_types=["Start", "Start", "Middle", "End", "End"]
         )
-        upper_graph.expand_graph_solutions(
-            num_branches=2,
-            num_loops=2
+        # check attributes are correct
+        assert check_length_attr(
+            graph_replaced,
+            lens=[1, 5, 0, 0, 1, 0],
+            attrs=[
+                "start_events", "events",
+                "branch_points", "break_points",
+                "end_events", "loop_events"
+            ]
         )
-        solutions = upper_graph.combine_nested_loop_solutions()
-        # there should be 4 solutions
-        assert len(solutions) == 4
-        # first solution nested loop loops twice. The below represents the
-        # flow from start event to last event
+
+    @staticmethod
+    def test_apply_sub_graph_event_solution_sub_graph_branch(
+        graph_with_branch: GraphSolution,
+        graph_simple: GraphSolution,
+        graph_single_event: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`apply_sub_graph_event_solution_sub_graph`
+        for a :class:`GraphSolution` with a :class:`BranchEventSolution` by
+        applying a simple 3 event sequence :class:`GraphSolution` and single
+        event sequence :class:`GraphSolution` using
+        :class:`GraphSolution`.`input_branch_graph_solutions` as
+        the application function.
+
+        The parent sequence is:
+
+        (Start)->(Branch)->(End)
+
+        The sub-graph solution combination of the Branch event is
+
+        (Start)->(Middle)->(End)
+
+        (Middle)
+
+        The resulting sequence after application should be
+
+                          ->(Middle)-----------------|
+        (Start)->(Branch)-|                          |->(End)
+                          ->(Start)->(Middle)->(End)-|
+
+        :param graph_with_branch: Fixture providing a :class:`GraphSolution`
+        containing a :class:`BranchEventSolution`
+        :type graph_with_branch: :class:`GraphSolution`
+        :param graph_simple: Fixture providing a :class:`GraphSolution` of a
+        simple 3 event sequence
+        :type graph_simple: :class:`GraphSolution`
+        :param graph_single_event: Fixture providing a :class:`GraphSolution`
+        with a single :class:`EventSolution`
+        :type graph_single_event: :class:`GraphSolution`
+        """
+        graph_replaced = (
+            GraphSolution.apply_sub_graph_event_solution_sub_graph(
+                solution=graph_with_branch,
+                combination=(
+                    graph_simple,
+                    graph_single_event
+                ),
+                event_key=2,
+                application_function=(
+                    GraphSolution.input_branch_graph_solutions
+                )
+            )
+        )
+        # check attributes are correct
+        assert check_length_attr(
+            graph_replaced,
+            lens=[1, 7, 1, 0, 1, 0],
+            attrs=[
+                "start_events", "events",
+                "branch_points", "break_points",
+                "end_events", "loop_events"
+            ]
+        )
+
+        # check one path
+        assert check_solution_correct(
+            solution=graph_replaced,
+            event_types=[
+                "Start", "Branch", "Start", "Middle", "End", "End"
+            ]
+        )
+        # check the other path by reversing the branch events post events list
+        graph_replaced.events[2].post_events = list(
+            reversed(graph_replaced.events[2].post_events)
+        )
+        assert check_solution_correct(
+            solution=graph_replaced,
+            event_types=[
+                "Start", "Branch", "Middle", "End"
+            ]
+        )
+
+    @staticmethod
+    def test_get_temp_combined_graph_solutions_loop(
+        graph_with_loop: GraphSolution,
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`get_temp_combined_graph_solutions` by
+        replacing an expanded :class:`LoopEventSolution`
+        in its parent :class:`GraphSolution` with combinations of loops for a
+        number of loops equal to 2
+
+        The parent sequence is:
+
+        (Start)->(Loop)->(End)
+
+        The sequences to replace the loop event and combine into the parent
+        sequence are:
+
+        (Middle)->(Middle)
+
+        (Middle)->(Start)->(Middle)->(End)
+
+        (Start)->(Middle)->(End)->(Start)->(Middle)->(End)
+
+        Start)->(Middle)->(End)->(Middle)
+
+        The resulting sequences after recombination should be
+
+        (Start)->(Middle)->(Middle)->(End)
+
+        (Start)->(Middle)->(Start)->(Middle)->(End)->(End)
+
+        (Start)->(Start)->(Middle)->(End)->(Start)->(Middle)->(End)->(End)
+
+        (Start)->Start)->(Middle)->(End)->(Middle)->(End)
+
+
+
+        :param graph_with_loop: Fixture providing a :class:`GraphSolution`
+        containing a :class:`LoopEventSolution`
+        :type graph_with_loop: :class:`GraphSolution`
+        :param graph_simple: Fixture providing a simple 3
+        :class:`EventSolution` sequence :class:`GraphSolution`
+        :type graph_simple: :class:`GraphSolution`
+        """
+        loop_event = graph_with_loop.loop_events[2]
+        loop_event.graph_solutions.append(graph_simple)
+        loop_event.expand(2)
+        combined_graphs = GraphSolution.get_temp_combined_graph_solutions(
+            combined_graph_solutions=[graph_with_loop],
+            event=loop_event,
+            event_key=2,
+            application_function=(
+                GraphSolution.replace_loop_event_with_sub_graph_solution
+            )
+        )
+        TestGraphSolutionsExpansions.check_loop_expansion_and_recombination(
+            combined_graphs=combined_graphs
+        )
+
+    @staticmethod
+    def check_loop_expansion_and_recombination(
+        combined_graphs: list[GraphSolution]
+    ) -> None:
+        """Method to check that the tests reconbination of expanded loop
+        :class:`GraphSolution`'s is correct
+
+        :param combined_graphs: The list of recombined :class:`GraphSolution`
+        :type combined_graphs: `list`[:class:`GraphSolution`]
+        """
+        assert len(combined_graphs) == 4
+        assert all(
+            2 not in graph_sol.events
+            for graph_sol in combined_graphs
+        )
+        # first solution
         first_sol = [
-            "Start_upper", "Start_first_loop_with_loop", "Middle_nested_loop",
-            "Middle_nested_loop", "End_first_loop_with_loop",
-            "Start_first_loop_with_loop", "Middle_nested_loop",
-            "Middle_nested_loop", "End_first_loop_with_loop", "End_upper"
+            "Start", "Middle", "Middle", "End"
         ]
-        # second solution (one of each duplicated "Middle_first_loop_branch"
-        # events are excluded)
+        # second solution
         second_sol = [
-            "Start_upper", "Start_first_loop_branch",
-            "Middle_first_loop_branch", "End_first_loop_branch",
-            "Start_first_loop_branch", "Middle_first_loop_branch",
-            "End_first_loop_branch", "End_upper"
+            "Start", "Middle", "Start", "Middle", "End", "End"
         ]
-        # third solution (the duplicated "Middle_first_loop_branch"
-        # event is excluded)
+        # third solution
         third_sol = [
-            "Start_upper", "Start_first_loop_with_loop", "Middle_nested_loop",
-            "Middle_nested_loop", "End_first_loop_with_loop",
-            "Start_first_loop_branch", "Middle_first_loop_branch",
-            "End_first_loop_branch", "End_upper"
+            "Start", "Start", "Middle", "End", "Start", "Middle", "End", "End"
         ]
-        # third solution (the duplicated "Middle_first_loop_branch"
-        # event is excluded)
+        # fourth solution
         fourth_sol = [
-            "Start_upper", "Start_first_loop_branch",
-            "Middle_first_loop_branch", "End_first_loop_branch",
-            "Start_first_loop_with_loop", "Middle_nested_loop",
-            "Middle_nested_loop", "End_first_loop_with_loop", "End_upper"
+            "Start", "Start", "Middle", "End", "Middle", "End"
         ]
         event_type_sequences = [first_sol, second_sol, third_sol, fourth_sol]
         # check that the solution sequences are correct
         check_multiple_solutions_correct(
-            solutions=solutions,
+            solutions=combined_graphs,
             event_types_sequences=event_type_sequences
+        )
+
+    @staticmethod
+    def test_get_temp_combined_graph_solutions_branch(
+        graph_with_branch: GraphSolution,
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`get_temp_combined_graph_solutions` by
+        replacing an expanded :class:`BranchEventSolution`
+        in its parent :class:`GraphSolution` with number of branches equal to
+        2.
+
+        The parent sequence is:
+
+        (Start)->(Branch)->(End)
+
+        The sub-graph solution combinations of the Branch event are
+
+        ((Start)->(Middle)->(End), (Middle))
+        ((Middle), (Middle))
+        ((Start)->(Middle)->(End), (Start)->(Middle)->(End))
+
+        The resulting sequences after combining with the parent sequence are
+
+                          ->(Middle)-----------------|
+        (Start)->(Branch)-|                          |->(End)
+                          ->(Start)->(Middle)->(End)-|
+
+                          ->(Middle)-|
+        (Start)->(Branch)-|          |->(End)
+                          ->(Middle)-|
+
+                          ->(Start)->(Middle)->(End)-|
+        (Start)->(Branch)-|                          |->(End)
+                          ->(Start)->(Middle)->(End)-|
+
+        :param graph_with_branch: Fixture providing a :class:`GraphSolution`
+        containing a :class:`BranchEventSolution`
+        :type graph_with_branch: :class:`GraphSolution`
+        """
+        branch_event = graph_with_branch.branch_points[2]
+        branch_event.expand(2)
+        combined_graphs = GraphSolution.get_temp_combined_graph_solutions(
+            combined_graph_solutions=[graph_with_branch],
+            event=branch_event,
+            event_key=2,
+            application_function=(
+                GraphSolution.input_branch_graph_solutions
+            )
+        )
+        TestGraphSolutionsExpansions.check_branch_expansion_and_recombination(
+            combined_graphs=combined_graphs
+        )
+
+    @staticmethod
+    def check_branch_expansion_and_recombination(
+        combined_graphs: list[GraphSolution]
+    ) -> None:
+        """Method to check that the tests recombination of expanded branch
+        :class:`GraphSolution`'s is correct
+
+        :param combined_graphs: The list of recombined :class:`GraphSolution`
+        :type combined_graphs: `list`[:class:`GraphSolution`]
+        """
+        assert len(combined_graphs) == 3
+        # check the first branches
+        # first possibilities
+        possibilities = [
+            ["Start", "Branch", "Start", "Middle", "End", "End"],
+            ["Start", "Branch", "Middle", "End"]
+        ]
+        combinations = combinations_with_replacement(possibilities, r=2)
+        all_is_sol = []
+        for combination in combinations:
+            is_sol = []
+            for graph_sol in combined_graphs:
+                graph_sol_copy = copy(graph_sol)
+                branch_1 = check_solution_correct(
+                    graph_sol_copy,
+                    combination[0]
+                )
+                graph_sol_copy.events[2].post_events = list(
+                    reversed(graph_sol_copy.events[2].post_events)
+                )
+                branch_2 = check_solution_correct(
+                    graph_sol_copy,
+                    combination[1]
+                )
+                if branch_1 and branch_2:
+                    is_sol.append(True)
+            all_is_sol.append(is_sol)
+        assert all(
+            len(is_sol) == 1
+            for is_sol in all_is_sol
+        )
+
+    @staticmethod
+    def test_combine_nested_solutions_no_nesting(
+        graph_with_branch: GraphSolution,
+        graph_with_loop: GraphSolution,
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests the method :class:`GraphSolution`.`combine_nested_solutions`
+        when there are no nested :class:`SubGraphEventSolution`'s
+
+        The parent sequence is
+
+        (Start)->(Branch)->(End)->(Start)->(Loop)->(End)
+
+        The sub-graph solution combinations of the Branch event are
+
+        ((Start)->(Middle)->(End), (Middle))
+        ((Middle), (Middle))
+        ((Start)->(Middle)->(End), (Start)->(Middle)->(End))
+
+        The sequences to replace the loop event and combine into the parent
+        sequence are:
+
+        (Middle)->(Middle)
+
+        (Middle)->(Start)->(Middle)->(End)
+
+        (Start)->(Middle)->(End)->(Start)->(Middle)->(End)
+
+        Start)->(Middle)->(End)->(Middle)
+
+        The resulting sequence are too large to show here but are product
+        combination of the following branch and then loop sequences added
+        together end to start. The branch sequences are:
+
+
+
+                          ->(Middle)-----------------|
+        (Start)->(Branch)-|                          |->(End)
+                          ->(Start)->(Middle)->(End)-|
+
+                          ->(Middle)-|
+        (Start)->(Branch)-|          |->(End)
+                          ->(Middle)-|
+
+                          ->(Start)->(Middle)->(End)-|
+        (Start)->(Branch)-|                          |->(End)
+                          ->(Start)->(Middle)->(End)-|
+
+        The loop sequences are
+
+        (Start)->(Middle)->(Middle)->(End)
+
+        (Start)->(Middle)->(Start)->(Middle)->(End)->(End)
+
+        (Start)->(Start)->(Middle)->(End)->(Start)->(Middle)->(End)->(End)
+
+        (Start)->Start)->(Middle)->(End)->(Middle)->(End)
+
+
+        :param graph_with_branch: Fixture providing a :class:`GraphSolution`
+        containing a :class:`BranchEventSolution`
+        :type graph_with_branch: :class:`GraphSolution`
+        :param graph_with_loop: Fixture providing a :class:`GraphSolution`
+        containing a :class:`LoopEventSolution`
+        :type graph_with_loop: :class:`GraphSolution`
+        :param graph_simple: Fixture providing a simple 3
+        :class:`EventSolution` sequence :class:`GraphSolution`
+        :type graph_simple: :class:`GraphSolution`
+        """
+        loop_event = graph_with_loop.loop_events[2]
+        loop_event.graph_solutions.append(graph_simple)
+        graph = graph_with_branch + graph_with_loop
+        combined_solutions = graph.combine_nested_solutions(
+            num_loops=2,
+            num_branches=2
+        )
+        assert len(combined_solutions) == 12
+        # solutions for loop graph
+        # first solution
+        first_sol = [
+            "Start", "Middle", "Middle", "End"
+        ]
+        # second solution
+        second_sol = [
+            "Start", "Middle", "Start", "Middle", "End", "End"
+        ]
+        # third solution
+        third_sol = [
+            "Start", "Start", "Middle", "End", "Start", "Middle", "End", "End"
+        ]
+        # fourth solution
+        fourth_sol = [
+            "Start", "Start", "Middle", "End", "Middle", "End"
+        ]
+        event_type_sequences = [first_sol, second_sol, third_sol, fourth_sol]
+        # possibilities for branch graph
+        possibilities = [
+            ["Start", "Branch", "Start", "Middle", "End", "End"],
+            ["Start", "Branch", "Middle", "End"]
+        ]
+        branch_combinations = combinations_with_replacement(possibilities, r=2)
+        all_is_sol = []
+        # loop over all combinations of branches and loops
+        for loop_graph_sol in event_type_sequences:
+            for branch_combination in branch_combinations:
+                combo_0 = branch_combination[0] + loop_graph_sol
+                combo_1 = branch_combination[1] + loop_graph_sol
+                is_sol = []
+                for graph_sol in combined_solutions:
+                    graph_sol_copy = copy(graph_sol)
+                    branch_1 = check_solution_correct(
+                        graph_sol_copy,
+                        combo_0
+                    )
+                    graph_sol_copy.events[2].post_events = list(
+                        reversed(graph_sol_copy.events[2].post_events)
+                    )
+                    branch_2 = check_solution_correct(
+                        graph_sol_copy,
+                        combo_1
+                    )
+                    if branch_1 and branch_2:
+                        is_sol.append(True)
+                all_is_sol.append(is_sol)
+        # prove that only one graph sol has the same sequence as each
+        # combination
+        assert all(
+            len(is_sol) == 1
+            for is_sol in all_is_sol
+        )
+
+    @staticmethod
+    def test_expand_nested_subgraph_event_solutions_loop_nested_loop(
+        graph_with_nested_loop: GraphSolution,
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`expand_nested_subgraph_event_solutions` to see
+        if the nested loop within the loop is expanded correctly
+
+        :param graph_with_nested_loop: Fixture providing a
+        :class:`GraphSolution` with a nested loop
+        :type graph_with_nested_loop: :class:`GraphSolution`
+        :param graph_simple: Fixture providing a simple 3
+        :class:`EventSolution` sequence :class:`GraphSolution`
+        :type graph_simple: :class:`GraphSolution`
+        """
+        loop_event = graph_with_nested_loop.loop_events[2]
+        loop_event.graph_solutions[0].loop_events[2].graph_solutions.append(
+            graph_simple
+        )
+        GraphSolution.expand_nested_subgraph_event_solutions(
+            event=loop_event,
+            num_loops=2,
+            num_branches=2
+        )
+        TestGraphSolutionsExpansions.check_loop_expansion_and_recombination(
+            combined_graphs=loop_event.graph_solutions
+        )
+
+    @staticmethod
+    def test_expand_nested_subgraph_event_solutions_loop_nested_branch(
+        graph_with_nested_loop: GraphSolution,
+        graph_with_branch: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`expand_nested_subgraph_event_solutions` to see
+        if the nested branch within the loop is expanded correctly
+
+        :param graph_with_nested_loop: Fixture providing a
+        :class:`GraphSolution` with a nested loop
+        :type graph_with_nested_loop: :class:`GraphSolution`
+        :param graph_with_branch: Fixture providing a :class:`GraphSolution`
+        containing a :class:`BranchEventSolution`
+        :type graph_with_branch: :class:`GraphSolution`
+        """
+        loop_event = graph_with_nested_loop.loop_events[2]
+        loop_event.graph_solutions = [graph_with_branch]
+        GraphSolution.expand_nested_subgraph_event_solutions(
+            event=loop_event,
+            num_loops=2,
+            num_branches=2
+        )
+        TestGraphSolutionsExpansions.check_branch_expansion_and_recombination(
+            combined_graphs=loop_event.graph_solutions
+        )
+
+    @staticmethod
+    def test_expand_nested_subgraph_event_solution_branch_nested_loop(
+        graph_with_branch: GraphSolution,
+        graph_with_loop: GraphSolution,
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`expand_nested_subgraph_event_solutions` to see
+        if the nested loop within the branch is expanded correctly
+
+        :param graph_with_branch: Fixture providing a :class:`GraphSolution`
+        containing a :class:`BranchEventSolution`
+        :type graph_with_branch: :class:`GraphSolution`
+        :param graph_with_loop: Fixture providing a :class:`GraphSolution`
+        containing a :class:`LoopEventSolution`
+        :type graph_with_loop: :class:`GraphSolution`
+        :param graph_simple: Fixture providing a simple 3
+        :class:`EventSolution` sequence :class:`GraphSolution`
+        :type graph_simple: :class:`GraphSolution`
+        """
+        branch_event = graph_with_branch.branch_points[2]
+        graph_with_loop.loop_events[2].graph_solutions.append(graph_simple)
+        branch_event.graph_solutions = [graph_with_loop]
+        GraphSolution.expand_nested_subgraph_event_solutions(
+            event=branch_event,
+            num_loops=2,
+            num_branches=2
+        )
+        TestGraphSolutionsExpansions.check_loop_expansion_and_recombination(
+            combined_graphs=branch_event.graph_solutions
+        )
+
+    @staticmethod
+    def test_expand_nested_subgraph_event_solution_branch_nested_branch(
+        graph_with_branch: GraphSolution,
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`expand_nested_subgraph_event_solutions` to see
+        if the nested branch within the branch is expanded correctly
+
+        :param graph_with_branch: Fixture providing a :class:`GraphSolution`
+        containing a :class:`BranchEventSolution`
+        :type graph_with_branch: :class:`GraphSolution`
+        """
+        branch_event = graph_with_branch.branch_points[2]
+        graph_with_branch_copy = deepcopy(graph_with_branch)
+        branch_event.graph_solutions = [graph_with_branch_copy]
+        GraphSolution.expand_nested_subgraph_event_solutions(
+            event=branch_event,
+            num_loops=2,
+            num_branches=2
+        )
+        TestGraphSolutionsExpansions.check_branch_expansion_and_recombination(
+            combined_graphs=branch_event.graph_solutions
+        )
+
+    @staticmethod
+    def test_combine_nested_solutions_nesting(
+        graph_with_nested_loop: GraphSolution,
+        graph_with_branch: GraphSolution
+    ) -> None:
+        """Tests the method :class:`GraphSolution`.`combine_nested_solutions`
+        for a situation of a :class:`GraphSolution` with a branch event
+        containing a sub :class:`GraphSolution` containing a nested branch and
+        also with a loop event containing a sub :class:`GraphSolution`
+        containing a nested loop.
+
+        :param graph_with_nested_loop: Fixture providing a
+        :class:`GraphSolution` with a nested loop
+        :type graph_with_nested_loop: :class:`GraphSolution`
+        :param graph_with_branch: Fixture providing a :class:`GraphSolution`
+        containing a :class:`BranchEventSolution`
+        """
+        graph_with_branch = deepcopy(graph_with_branch)
+        branch_event = graph_with_branch.branch_points[2]
+        graph_with_branch_copy = deepcopy(graph_with_branch)
+        branch_event.graph_solutions = [graph_with_branch_copy]
+        graph = graph_with_nested_loop + graph_with_branch
+        combined_graphs = graph.combine_nested_solutions(
+            num_loops=2,
+            num_branches=2
+        )
+        assert len(combined_graphs) == 6
+        loop_graph_sequence = [
+            "Start", "Start", "Middle", "Middle", "End",
+            "Start", "Middle", "Middle", "End", "End"
+        ]
+        sequences = [
+            [
+                "Start", "Branch", "Start", "Branch", "Middle", "End", "End"
+            ],
+            [
+                "Start", "Branch", "Start", "Branch", "Start", "Middle", "End",
+                "End", "End"
+            ]
+        ]
+        # add loop graph sequence to start of sequences
+        sequences = [
+            loop_graph_sequence + sequence
+            for sequence in sequences
+        ]
+        sequence_appearance_count = {
+            0: 0,
+            1: 0
+        }
+        # check that both sequence path possibilities appear 12 times
+        for combined_graph in combined_graphs:
+            copied_graph_0 = deepcopy(combined_graph)
+            copied_graph_1 = deepcopy(combined_graph)
+            copied_graph_1.branch_points[5].post_events = list(
+                reversed(
+                    copied_graph_1.branch_points[5].post_events
+                )
+            )
+            copied_graph_2 = deepcopy(copied_graph_0)
+            copied_graph_3 = deepcopy(copied_graph_1)
+
+            for copied_graph in [copied_graph_2, copied_graph_3]:
+                for branch_point in list(
+                    copied_graph.branch_points.values()
+                )[1:]:
+                    branch_point.post_events = list(
+                        reversed(
+                            branch_point.post_events
+                        )
+                    )
+            for copied_graph in [
+                copied_graph_0, copied_graph_1, copied_graph_2, copied_graph_3
+            ]:
+                for i, sequence in enumerate(sequences):
+                    if check_solution_correct(
+                        copied_graph,
+                        sequence
+                    ):
+                        sequence_appearance_count[i] += 1
+        assert all(
+            count == 12
+            for count in sequence_appearance_count.values()
         )
 
 
