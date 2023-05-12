@@ -85,7 +85,8 @@ class Graph:
                 restricted_key not in key and value
                 for restricted_key in [
                     "type", "loop_graph", "is_loop",
-                    "meta_data", "branch_graph"
+                    "meta_data", "branch_graph",
+                    "dynamic_control_events"
                 ]
             )
         ]
@@ -501,6 +502,10 @@ class Graph:
                     num_branches=num_branches
                 )
             )
+        # update control event counts
+        GraphSolution.get_graph_solutions_updated_control_counts(
+            expanded_and_combined_graph_solutions
+        )
         return expanded_and_combined_graph_solutions
 
     @staticmethod

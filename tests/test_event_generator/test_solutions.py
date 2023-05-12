@@ -14,6 +14,7 @@ from test_event_generator.solutions import (
     GraphSolution,
     LoopEventSolution,
     BranchEventSolution,
+    DynamicControl,
     get_audit_event_jsons_and_templates,
     get_categorised_audit_event_jsons
 )
@@ -3303,3 +3304,1096 @@ def test_get_categorised_audit_event_jsons(
             TestGraphSolutionGenerateAuditEvents.check_audit_events_template(
                 audit_event_data=audit_event_data
             )
+
+
+@pytest.fixture
+def graph_branch_event_id_tuple(
+    graph_with_branch: GraphSolution
+) -> GraphSolution:
+    """Pytest fixture to provide a :class:`GraphSolution` with
+    :class:`BranchEventSolution` with the events `event_id_tuple` attribute
+    updated
+
+    :param graph_with_branch: Fixture providing :class:`GraphSolution` with a
+    :class:`BranchEventSolution`
+    :type graph_with_branch: :class:`GraphSolution`
+    :return: Returns the :class:`GraphSolution` with updated attribute
+    :rtype: :class:`GraphSolution`
+    """
+    graph = deepcopy(graph_with_branch)
+    for event in graph.events.values():
+        event.event_id_tuple = (event.meta_data["EventType"], 0)
+    return graph
+
+
+@pytest.fixture
+def graph_loop_event_count_id_tuple(
+    graph_with_loop: GraphSolution
+) -> GraphSolution:
+    """Pytest fixture to provide a :class:`GraphSolution` with
+    :class:`LoopEventSolution` with the events `event_id_tuple` attribute
+    updated and dynamic control loop count added before the loop and inside
+    the loop
+
+    :param graph_with_loop: Fixture providing a :class:`GraphSolution`
+    containing a :class:`LoopEventSolution` with sub :class:`GraphSolution`
+    :type graph_with_loop: :class:`GraphSolution`
+    :return: Returns the updated :class:`GraphSolution`
+    :rtype: :class:`GraphSolution`
+    """
+    graph = deepcopy(graph_with_loop)
+    events = [
+        event for event in graph.events.values()
+    ] + [
+        event
+        for graph_sol in graph.loop_events[2].graph_solutions
+        for event in graph_sol.events.values()
+    ]
+    GraphSolution.update_event_type_counts(events)
+    for event in events:
+        event.event_id_tuple = (event.meta_data["EventType"], event.count)
+    provider_event = graph.events[1]
+    user_event = graph.loop_events[2].graph_solutions[0].events[1]
+    dynamic_control_events = {
+        "X": {
+            "control_type": "LOOPCOUNT",
+            "provider": {
+                "EventType": provider_event.event_id_tuple[0],
+                "occurenceId": provider_event.event_id_tuple[1],
+            },
+            "user": {
+                "EventType": user_event.event_id_tuple[0],
+                "occurenceId": user_event.event_id_tuple[1],
+            }
+        }
+    }
+    provider_event.parse_dynamic_control_events(
+        dynamic_control_events
+    )
+    user_event.parse_dynamic_control_events(
+        dynamic_control_events
+    )
+    return graph
+
+
+@pytest.fixture
+def graph_multiple_branches(
+    graph_with_branch: GraphSolution,
+) -> GraphSolution:
+    """Pytest fixture to provide a :class:`GraphSolution` containing multiple
+    un-nested :class:`BranchEventSolution`'s
+
+    :param graph_with_branch: Fixture providing a :class:`GraphSolution` with
+    a single :class:`BranchEventSolution`
+    :type graph_with_branch: :class:`GraphSolution`
+    :return: Returns the updated :class:`GraphSolution` containing two
+    :class:`BranchEventSolution`'s
+    :rtype: :class:`GraphSolution`
+    """
+    graph = graph_with_branch + graph_with_branch
+    GraphSolution.update_event_type_counts(
+        graph.events.values()
+    )
+    for event in graph.events.values():
+        event.event_id_tuple = (event.meta_data["EventType"], event.count)
+    return graph
+
+
+@pytest.fixture
+def graph_multiple_loop_events(
+    graph_with_loop: GraphSolution
+) -> GraphSolution:
+    """Pytest fixture providing a :class:`GraphSolution` containing multiple
+    un-nested :class:`LoopEventSolution`'s with the events `event_id_tuple`
+    attribute updated and dynamic control loop count added before the loops
+    and inside the loops
+
+    :param graph_with_loop: Fixture providing :class:`GraphSolution`
+    containing a single :class:`LoopEventSolution`
+    :type graph_with_loop: :class:`GraphSolution`
+    :return: Returns the updated :class:`GraphSolution` containing two
+    :class:`LoopEventSolution`s
+    :rtype: :class:`GraphSolution`
+    """
+    graph = graph_with_loop + graph_with_loop
+    events = [
+        event for event in graph.events.values()
+    ] + [
+        event
+        for loop_event in graph.loop_events.values()
+        for graph_sol in loop_event.graph_solutions
+        for event in graph_sol.events.values()
+    ]
+    GraphSolution.update_event_type_counts(events)
+    for event in events:
+        event.event_id_tuple = (event.meta_data["EventType"], event.count)
+    for provider_key, user_key in [(1, 2), (4, 5)]:
+        provider_event = graph.events[provider_key]
+        user_event = graph.loop_events[user_key].graph_solutions[0].events[1]
+        dynamic_control_events = {
+            "X": {
+                "control_type": "LOOPCOUNT",
+                "provider": {
+                    "EventType": provider_event.event_id_tuple[0],
+                    "occurenceId": provider_event.event_id_tuple[1],
+                },
+                "user": {
+                    "EventType": user_event.event_id_tuple[0],
+                    "occurenceId": user_event.event_id_tuple[1],
+                }
+            }
+        }
+        provider_event.parse_dynamic_control_events(
+            dynamic_control_events
+        )
+        user_event.parse_dynamic_control_events(
+            dynamic_control_events
+        )
+    return graph
+
+
+@pytest.fixture
+def graph_branch_nested_branch(
+    graph_with_branch: GraphSolution
+) -> GraphSolution:
+    """Pytest fixture providing a :class:`GraphSolution` containing a
+    :class:`BranchEventSolution` containg another nested
+    :class:`BranchEventSolution` within its sub :class:`GraphSolution`.
+    The provider of the dynamic control for the nested
+    :class:`BranchEventSolution` is itself.
+
+    :param graph_with_branch: Fixture providing :class:`GraphSolution`
+    containing a :class:`BranchEventSolution`
+    :type graph_with_branch: :class:`GraphSolution`
+    :return: Returns the update :class:`GraphSolution` with nested
+    :class:`BranchEventSolution`'s
+    :rtype: :class:`GraphSolution`
+    """
+    graph = deepcopy(graph_with_branch)
+    graph.branch_points[2].graph_solutions = [deepcopy(graph_with_branch)]
+    events = [
+        event for event in graph.events.values()
+    ] + [
+        event
+        for branch_event in graph.branch_points.values()
+        for graph_sol in branch_event.graph_solutions
+        for event in graph_sol.events.values()
+    ]
+    GraphSolution.update_event_type_counts(events)
+    for event in events:
+        event.event_id_tuple = (event.meta_data["EventType"], event.count)
+    branch_events = [
+        graph.branch_points[2],
+        graph.branch_points[2].graph_solutions[0].branch_points[2],
+    ]
+    for event in branch_events:
+        event.parse_dynamic_control_events(
+            {
+                "X": {
+                    "control_type": "BRANCHCOUNT",
+                    "provider": {
+                        "EventType": event.event_id_tuple[0],
+                        "occurenceId": event.event_id_tuple[1]
+                    },
+                    "user": {
+                        "EventType": event.event_id_tuple[0],
+                        "occurenceId": event.event_id_tuple[1]
+                    }
+                }
+            }
+        )
+    return graph
+
+
+@pytest.fixture
+def graph_branch_nested_branch_prov_outside(
+    graph_with_branch: GraphSolution
+) -> GraphSolution:
+    """Pytest fixture providing a :class:`GraphSolution` containing a
+    :class:`BranchEventSolution` containg another nested
+    :class:`BranchEventSolution` within its sub :class:`GraphSolution`.
+    The provider of the dynamic control for the nested
+    :class:`BranchEventSolution` is outside of the top level
+    :class:`BranchEventSolution`.
+
+    :param graph_with_branch: Fixture providing :class:`GraphSolution`
+    containing a :class:`BranchEventSolution`
+    :type graph_with_branch: :class:`GraphSolution`
+    :return: Returns the update :class:`GraphSolution` with nested
+    :class:`BranchEventSolution`'s with provider outside
+    :rtype: :class:`GraphSolution`
+    """
+    graph = deepcopy(graph_with_branch)
+    graph.branch_points[2].graph_solutions = [deepcopy(graph_with_branch)]
+    events = [
+        event for event in graph.events.values()
+    ] + [
+        event
+        for branch_event in graph.branch_points.values()
+        for graph_sol in branch_event.graph_solutions
+        for event in graph_sol.events.values()
+    ]
+    GraphSolution.update_event_type_counts(events)
+    for event in events:
+        event.event_id_tuple = (event.meta_data["EventType"], event.count)
+
+    nested_provider = graph.events[1]
+    nested_user = graph.branch_points[2].graph_solutions[0].branch_points[2]
+    for event in [nested_provider, nested_user]:
+        event.parse_dynamic_control_events(
+            {
+                "X": {
+                    "control_type": "BRANCHCOUNT",
+                    "provider": {
+                        "EventType": nested_provider.event_id_tuple[0],
+                        "occurenceId": nested_provider.event_id_tuple[1]
+                    },
+                    "user": {
+                        "EventType": nested_user.event_id_tuple[0],
+                        "occurenceId": nested_user.event_id_tuple[1]
+                    }
+                }
+            }
+        )
+    graph.branch_points[2].parse_dynamic_control_events(
+        {
+            "X": {
+                "control_type": "BRANCHCOUNT",
+                "provider": {
+                    "EventType": graph.branch_points[2].event_id_tuple[0],
+                    "occurenceId": graph.branch_points[2].event_id_tuple[1],
+                },
+                "user": {
+                    "EventType": graph.branch_points[2].event_id_tuple[0],
+                    "occurenceId": graph.branch_points[2].event_id_tuple[1],
+                }
+            }
+        }
+    )
+    return graph
+
+
+@pytest.fixture
+def graph_branch_nested_loop_prov_outside(
+    graph_with_branch: GraphSolution,
+    graph_with_loop: GraphSolution
+) -> GraphSolution:
+    """Pytest fixture providing a :class:`GraphSolution` containing a
+    :class:`BranchEventSolution` containg a nested
+    :class:`LoopEventSolution` within its sub :class:`GraphSolution`.
+    The provider of the dynamic control for the nested
+    :class:`LoopEventSolution` is outside of the top level
+    :class:`BranchEventSolution`.
+
+    :param graph_with_branch: Fixture providing :class:`GraphSolution`
+    containing a :class:`BranchEventSolution`
+    :type graph_with_branch: :class:`GraphSolution`
+    :param graph_with_loop: Fixture providing :class:`GraphSolution`
+    containing a single :class:`LoopEventSolution`
+    :return: Returns the updated :class:`GraphSolution` with
+    :class:`LoopEventSolution` nested in the :class:`BranchEventSolution`
+    :rtype: :class:`GraphSolution`
+    """
+    graph = deepcopy(graph_with_branch)
+    graph.branch_points[2].graph_solutions = [deepcopy(graph_with_loop)]
+    events = [
+        event for event in graph.events.values()
+    ] + [
+        event
+        for branch_event in graph.branch_points.values()
+        for graph_sol in branch_event.graph_solutions
+        for event in graph_sol.events.values()
+    ] + [
+        event
+        for branch_event in graph.branch_points.values()
+        for graph_sol in branch_event.graph_solutions
+        for loop_event in graph_sol.loop_events.values()
+        for nested_graph_sol in loop_event.graph_solutions
+        for event in nested_graph_sol.events.values()
+    ]
+    GraphSolution.update_event_type_counts(events)
+    for event in events:
+        event.event_id_tuple = (event.meta_data["EventType"], event.count)
+
+    nested_provider = graph.events[1]
+    nested_user = (
+        graph.branch_points[2].graph_solutions[0].loop_events[2].
+        graph_solutions[0].events[1]
+    )
+    for event in [nested_provider, nested_user]:
+        event.parse_dynamic_control_events(
+            {
+                "X": {
+                    "control_type": "LOOPCOUNT",
+                    "provider": {
+                        "EventType": nested_provider.event_id_tuple[0],
+                        "occurenceId": nested_provider.event_id_tuple[1]
+                    },
+                    "user": {
+                        "EventType": nested_user.event_id_tuple[0],
+                        "occurenceId": nested_user.event_id_tuple[1]
+                    }
+                }
+            }
+        )
+    graph.branch_points[2].parse_dynamic_control_events(
+        {
+            "X": {
+                "control_type": "BRANCHCOUNT",
+                "provider": {
+                    "EventType": graph.branch_points[2].event_id_tuple[0],
+                    "occurenceId": graph.branch_points[2].event_id_tuple[1],
+                },
+                "user": {
+                    "EventType": graph.branch_points[2].event_id_tuple[0],
+                    "occurenceId": graph.branch_points[2].event_id_tuple[1],
+                }
+            }
+        }
+    )
+    return graph
+
+
+@pytest.fixture
+def graph_branch_nested_loop_prov_inside(
+    graph_with_branch: GraphSolution,
+    graph_with_loop: GraphSolution
+) -> GraphSolution:
+    """Pytest fixture providing a :class:`GraphSolution` containing a
+    :class:`BranchEventSolution` containg a nested
+    :class:`LoopEventSolution` within its sub :class:`GraphSolution`.
+    The provider of the dynamic control for the nested
+    :class:`LoopEventSolution` is inside of the top level
+    :class:`BranchEventSolution`.
+
+    :param graph_with_branch: Fixture providing :class:`GraphSolution`
+    containing a :class:`BranchEventSolution`
+    :type graph_with_branch: :class:`GraphSolution`
+    :param graph_with_loop: Fixture providing :class:`GraphSolution`
+    containing a single :class:`LoopEventSolution`
+    :return: Returns the updated :class:`GraphSolution` with
+    :class:`LoopEventSolution` nested in the :class:`BranchEventSolution`
+    :rtype: :class:`GraphSolution`
+    """
+    graph = deepcopy(graph_with_branch)
+    graph.branch_points[2].graph_solutions = [deepcopy(graph_with_loop)]
+    events = [
+        event for event in graph.events.values()
+    ] + [
+        event
+        for branch_event in graph.branch_points.values()
+        for graph_sol in branch_event.graph_solutions
+        for event in graph_sol.events.values()
+    ] + [
+        event
+        for branch_event in graph.branch_points.values()
+        for graph_sol in branch_event.graph_solutions
+        for loop_event in graph_sol.loop_events.values()
+        for nested_graph_sol in loop_event.graph_solutions
+        for event in nested_graph_sol.events.values()
+    ]
+    GraphSolution.update_event_type_counts(events)
+    for event in events:
+        event.event_id_tuple = (event.meta_data["EventType"], event.count)
+
+    nested_provider = graph.branch_points[2].graph_solutions[0].events[1]
+    nested_user = (
+        graph.branch_points[2].graph_solutions[0].loop_events[2].
+        graph_solutions[0].events[1]
+    )
+    for event in [nested_provider, nested_user]:
+        event.parse_dynamic_control_events(
+            {
+                "X": {
+                    "control_type": "LOOPCOUNT",
+                    "provider": {
+                        "EventType": nested_provider.event_id_tuple[0],
+                        "occurenceId": nested_provider.event_id_tuple[1]
+                    },
+                    "user": {
+                        "EventType": nested_user.event_id_tuple[0],
+                        "occurenceId": nested_user.event_id_tuple[1]
+                    }
+                }
+            }
+        )
+    graph.branch_points[2].parse_dynamic_control_events(
+        {
+            "X": {
+                "control_type": "BRANCHCOUNT",
+                "provider": {
+                    "EventType": graph.branch_points[2].event_id_tuple[0],
+                    "occurenceId": graph.branch_points[2].event_id_tuple[1],
+                },
+                "user": {
+                    "EventType": graph.branch_points[2].event_id_tuple[0],
+                    "occurenceId": graph.branch_points[2].event_id_tuple[1],
+                }
+            }
+        }
+    )
+    return graph
+
+
+class TestEventSolutionDynamicControl:
+    """Tests for usage of :class:`DynamicControl` in :class:`EventSolution`
+    """
+    @staticmethod
+    def test_parse_dynamic_control_events(
+        graph_branch_event_id_tuple: GraphSolution
+    ) -> GraphSolution:
+        """Tests the method
+        :class:`GraphSolution`.`parse_dynamic_control_events`
+
+        :param graph_branch_event_id_tuple: Fixture providing a
+        :class:`GraphSolution` with a :class:`BranchEventSolution`.
+        :type graph_branch_event_id_tuple: :class:`GraphSolution`
+        :return: Returns the :class:`GraphSolution` with the
+        :class:`BranchEventSolution` updated with a :class:`DynamicControl`
+        :rtype: :class:`GraphSolution`
+        """
+        for event in graph_branch_event_id_tuple.branch_points.values():
+            event.parse_dynamic_control_events(
+                {
+                    "X": {
+                        "control_type": "BRANCHCOUNT",
+                        "provider": {
+                            "EventType": event.event_id_tuple[0],
+                            "occurenceId": event.event_id_tuple[1]
+                        },
+                        "user": {
+                            "EventType": event.event_id_tuple[0],
+                            "occurenceId": event.event_id_tuple[1]
+                        }
+                    }
+                }
+            )
+            assert len(event.dynamic_control_events) == 1
+            assert "X" in event.dynamic_control_events
+            assert isinstance(
+                event.dynamic_control_events["X"],
+                DynamicControl
+            )
+            assert (
+                event.event_id_tuple
+            ) == event.dynamic_control_events["X"].user
+            assert (
+                event.event_id_tuple
+            ) == event.dynamic_control_events["X"].provider
+        return graph_branch_event_id_tuple
+
+    @staticmethod
+    def test_create_dynamic_control_audit_event_data() -> None:
+        event = (
+            TestGraphSolutionDynamicControl.test_filter_user_dynamic_controls()
+        )
+        dyanamic_control_providers = (
+            event.create_dynamic_control_audit_event_data()
+        )
+        assert len(dyanamic_control_providers) == 1
+        assert "X" in dyanamic_control_providers
+        assert dyanamic_control_providers["X"]["dataItemType"] == "BRANCHCOUNT"
+        assert dyanamic_control_providers["X"]["value"] == 0
+
+    @staticmethod
+    def test_get_audit_event_json_dynamic_controls():
+        event = (
+            TestGraphSolutionDynamicControl.test_filter_user_dynamic_controls()
+        )
+        audit_event_json = event.get_audit_event_json(
+            job_id="1",
+            time_stamp="00:00:00",
+        )
+        assert "X" in audit_event_json
+        assert all(
+            name not in audit_event_json
+            for name in ["Y", "Z"]
+        )
+        assert audit_event_json["X"]["dataItemType"] == "BRANCHCOUNT"
+        assert audit_event_json["X"]["value"] == 0
+
+
+class TestGraphSolutionDynamicControl:
+    """Tests functionality of :class:`GraphSolution`
+    counting :class:`DynamicControl` providers and users
+    """
+    @staticmethod
+    def test_filter_user_dynamic_controls() -> EventSolution:
+        """Tests :class:`GraphSolution`.`filter_user_dynamic_controls`
+
+        :return: Returns :class:`EventSolution` with dynamic controls
+        :rtype: :class:`EventSolution`
+        """
+        event = EventSolution(
+            meta_data={
+                "EventType": "Event"
+            },
+            event_id_tuple=("Event", 0)
+        )
+        event.parse_dynamic_control_events(
+            {
+                "X": {
+                    "control_type": "BRANCHCOUNT",
+                    "provider": {
+                        "EventType": "Event",
+                        "occurenceId": 0
+                    },
+                    "user": {
+                        "EventType": "Other_Event",
+                        "occurenceId": 0
+                    }
+                },
+                "Y": {
+                    "control_type": "LOOPCOUNT",
+                    "provider": {
+                        "EventType": "Other_Event",
+                        "occurenceId": 0
+                    },
+                    "user": {
+                        "EventType": "Event",
+                        "occurenceId": 0
+                    }
+                },
+                "Z": {
+                    "control_type": "BRANCHCOUNT",
+                    "provider": {
+                        "EventType": "Other_Event",
+                        "occurenceId": 0
+                    },
+                    "user": {
+                        "EventType": "Event",
+                        "occurenceId": 0
+                    }
+                }
+            }
+        )
+        # filter user DynamicControl's
+        filtered_dynamic_controls = GraphSolution.filter_user_dynamic_controls(
+            event=event
+        )
+        # The two user Dynamic controls must have been filtered out
+        assert len(filtered_dynamic_controls) == 1
+        # The DynamicControl filtered out has name X
+        assert "X" in filtered_dynamic_controls
+        return event
+
+    @staticmethod
+    def test_count_dynamic_controls_branches_single_branch_event(
+        graph_branch_event_id_tuple: GraphSolution
+    ) -> None:
+        """Tests the method :class:`GraphSolution`.`count_dynamic_controls`
+        for a :class:`GraphSolution` with a single :class:`BranchEventSolution`
+
+        :param graph_branch_event_id_tuple: Fixture providing a
+        :class:`GraphSolution` containing a single :class:`BranchEventSolution`
+        :type graph_branch_event_id_tuple: :class:`GraphSolution`
+        """
+        graph = (
+            TestEventSolutionDynamicControl.test_parse_dynamic_control_events(
+                graph_branch_event_id_tuple=graph_branch_event_id_tuple
+            )
+        )
+        graph_solutions = graph.combine_nested_solutions(
+            num_loops=2,
+            num_branches=10
+        )
+        for graph_sol in graph_solutions:
+            GraphSolution.count_dynamic_controls(
+                graph_sol.events[2],
+                graph_sol.events[2].dynamic_control_events
+            )
+            assert graph_sol.events[2].dynamic_control_events["X"].count == 10
+
+    @staticmethod
+    def test_count_dynamic_controls_branches_multiple_branch_events(
+        graph_multiple_branches: GraphSolution
+    ) -> None:
+        """Tests the method :class:`GraphSolution`.`count_dynamic_controls`
+        for a :class:`GraphSolution` with multiple un-nested
+        :class:`BranchEventSolution`'s
+
+        :param graph_multiple_branches: Fixture providing a
+        :class:`GraphSolution` with multiple un-nested
+        :class:`BranchEventSolution`'s
+        :type graph_multiple_branches: :class:`GraphSolution`
+        """
+        graph = (
+            TestEventSolutionDynamicControl.test_parse_dynamic_control_events(
+                graph_branch_event_id_tuple=graph_multiple_branches
+            )
+        )
+        graph_solutions = graph.combine_nested_solutions(
+            num_loops=2,
+            num_branches=10
+        )
+        for graph_sol in graph_solutions:
+            for key in [2, 5]:
+                GraphSolution.count_dynamic_controls(
+                    graph_sol.events[key],
+                    graph_sol.events[key].dynamic_control_events
+                )
+                assert (
+                    graph_sol.events[key].dynamic_control_events["X"].count
+                ) == 10
+
+    @staticmethod
+    def test_count_dynamic_controls_loops_single_loop_event(
+        graph_loop_event_count_id_tuple: GraphSolution
+    ) -> None:
+        """Tests the method :class:`GraphSolution`.`count_dynamic_controls`
+        for a :class:`GraphSolution` with a single :class:`LoopEventSolution`
+        with a provider and user of a :class:`DynamicControl` LCNT added
+
+        :param graph_loop_event_count_id_tuple: Fixture providing a
+        :class:`GraphSolution` with a :class:`LoopEventSolution` with a
+        :class:`DynamicControl` LCNT
+        :type graph_loop_event_count_id_tuple: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_loop_event_count_id_tuple.combine_nested_solutions(
+                num_loops=10,
+                num_branches=2
+            )
+        )
+        GraphSolution.count_dynamic_controls(
+            graph_solutions[0].events[1],
+            graph_solutions[0].events[1].dynamic_control_events
+        )
+        assert (
+            graph_solutions[0].events[1].dynamic_control_events["X"].count
+        ) == 10
+
+    @staticmethod
+    def test_count_dynamic_controls_loops_multiple_loop_events(
+        graph_multiple_loop_events: GraphSolution
+    ) -> None:
+        """Tests the method :class:`GraphSolution`.`count_dynamic_controls`
+        for a :class:`GraphSolution` with multiple :class:`LoopEventSolution`'s
+        with providers and users of a :class:`DynamicControl` LCNT added
+
+        :param graph_multiple_loop_events: Fixture providing a
+        :class:`GraphSolution` containing multiple :class:`LoopEventSolution`'s
+        :type graph_multiple_loop_events: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_multiple_loop_events.combine_nested_solutions(
+                num_loops=10,
+                num_branches=2
+            )
+        )
+        for provider_event_key in [1, 4]:
+            GraphSolution.count_dynamic_controls(
+                graph_solutions[0].events[provider_event_key],
+                graph_solutions[0].events[
+                    provider_event_key
+                ].dynamic_control_events
+            )
+            assert (
+                graph_solutions[0].events[
+                    provider_event_key
+                ].dynamic_control_events["X"].count
+            ) == 10
+
+    @staticmethod
+    def test_count_dynamic_controls_branches_nested_branch_prov_inside(
+        graph_branch_nested_branch: GraphSolution
+    ) -> None:
+        """Tests the method :class:`GraphSolution`.`count_dynamic_controls`
+        for a :class:`GraphSolution` with a single :class:`BranchEventSolution`
+        containing a nested :class:`BranchEventSolution`. The provider of the
+        :class:`DynamicControl` is inside the top level
+        :class:`BranchEventSolution`
+
+        :param graph_branch_nested_branch: Fixture providing a
+        :class:`GraphSolution` containing a :class:`BranchEventSolution` with
+        a nested :class:`BranchEventSolution` with provider inside top level
+        :class:`BranchEventSolution`
+        :type graph_branch_nested_branch: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_branch_nested_branch.combine_nested_solutions(
+                num_loops=2,
+                num_branches=4
+            )
+        )
+        for graph_sol in graph_solutions:
+            assert len(graph_sol.branch_points) == 5
+            for branch_event in graph_sol.branch_points.values():
+                GraphSolution.count_dynamic_controls(
+                    branch_event,
+                    branch_event.dynamic_control_events
+                )
+                assert (
+                    branch_event.dynamic_control_events["X"].count
+                ) == 4
+
+    @staticmethod
+    def test_count_dynamic_controls_branches_nested_branch_prov_outside(
+        graph_branch_nested_branch_prov_outside: GraphSolution
+    ) -> None:
+        """Tests the method :class:`GraphSolution`.`count_dynamic_controls`
+        for a :class:`GraphSolution` with a single :class:`BranchEventSolution`
+        containing a nested :class:`BranchEventSolution`. The provider of the
+        :class:`DynamicControl` is outside the top level
+        :class:`BranchEventSolution`
+
+        :param graph_branch_nested_branch_prov_outside: Fixture providing a
+        :class:`GraphSolution` containing a :class:`BranchEventSolution` with
+        a nested :class:`BranchEventSolution` with provider outside the top
+        level :class:`BranchEventSolution`
+        :type graph_branch_nested_branch_prov_outside: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_branch_nested_branch_prov_outside.combine_nested_solutions(
+                num_loops=2,
+                num_branches=4
+            )
+        )
+        for graph_sol in graph_solutions:
+            assert len(graph_sol.branch_points) == 5
+            # first branch (both user and provider)
+            branch_event_1 = graph_sol.branch_points[2]
+            GraphSolution.count_dynamic_controls(
+                branch_event_1,
+                branch_event_1.dynamic_control_events
+            )
+            assert (
+                branch_event_1.dynamic_control_events["X"].count
+            ) == 4
+            # second branch provider before first branch and user within first
+            # branch
+            provider_event = graph_sol.events[1]
+            GraphSolution.count_dynamic_controls(
+                provider_event,
+                provider_event.dynamic_control_events
+            )
+            # the count should be 16 as the branch user is within another
+            # branch
+            assert (
+                provider_event.dynamic_control_events["X"].count
+            ) == 16
+
+    @staticmethod
+    def test_count_dynamic_controls_branches_nested_loop_prov_outside(
+        graph_branch_nested_loop_prov_outside: GraphSolution
+    ) -> None:
+        """Tests the method :class:`GraphSolution`.`count_dynamic_controls`
+        for a :class:`GraphSolution` with a single :class:`BranchEventSolution`
+        containing a nested :class:`LoopEventSolution`. The provider of the
+        :class:`DynamicControl` is outside the top level
+        :class:`BranchEventSolution`
+
+        :param graph_branch_nested_loop_prov_outside: Fixture providing a
+        :class:`GraphSolution` containing a :class:`BranchEventSolution` with
+        a nested :class:`LoopEventSolution` with provider outside the top
+        level :class:`BranchEventSolution`
+        :type graph_branch_nested_loop_prov_outside: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_branch_nested_loop_prov_outside.combine_nested_solutions(
+                num_loops=2,
+                num_branches=2
+            )
+        )
+        assert len(graph_solutions) == 1
+        provider_event = graph_solutions[0].events[1]
+        GraphSolution.count_dynamic_controls(
+            provider_event,
+            provider_event.dynamic_control_events
+        )
+        assert (
+            provider_event.dynamic_control_events["X"].count
+        ) == 4
+        branch_event_1 = graph_solutions[0].branch_points[2]
+        GraphSolution.count_dynamic_controls(
+            branch_event_1,
+            branch_event_1.dynamic_control_events
+        )
+        assert (
+            branch_event_1.dynamic_control_events["X"].count
+        ) == 2
+
+    @staticmethod
+    def test_count_dynamic_controls_branches_nested_loop_prov_inside(
+        graph_branch_nested_loop_prov_inside: GraphSolution
+    ) -> None:
+        """Tests the method :class:`GraphSolution`.`count_dynamic_controls`
+        for a :class:`GraphSolution` with a single :class:`BranchEventSolution`
+        containing a nested :class:`LoopEventSolution`. The provider of the
+        :class:`DynamicControl` is inside the top level
+        :class:`BranchEventSolution`
+
+        :param graph_branch_nested_loop_prov_inside: Fixture providing a
+        :class:`GraphSolution` containing a :class:`BranchEventSolution` with
+        a nested :class:`LoopEventSolution` with provider inside the top
+        level :class:`BranchEventSolution`
+        :type graph_branch_nested_loop_prov_inside: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_branch_nested_loop_prov_inside.combine_nested_solutions(
+                num_loops=4,
+                num_branches=4
+            )
+        )
+        assert len(graph_solutions) == 1
+        for post_event in graph_solutions[0].branch_points[2].post_events:
+            GraphSolution.count_dynamic_controls(
+                post_event,
+                post_event.dynamic_control_events
+            )
+            assert (
+                post_event.dynamic_control_events["X"].count
+            ) == 4
+        branch_event_1 = graph_solutions[0].branch_points[2]
+        GraphSolution.count_dynamic_controls(
+            branch_event_1,
+            branch_event_1.dynamic_control_events
+        )
+        assert (
+            branch_event_1.dynamic_control_events["X"].count
+        ) == 4
+
+    @staticmethod
+    def test_update_control_event_counts_branches_single_branch_event(
+        graph_branch_event_id_tuple: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`update_control_event_counts`
+        for a :class:`GraphSolution` with a single :class:`BranchEventSolution`
+
+        :param graph_branch_event_id_tuple: Fixture providing a
+        :class:`GraphSolution` containing a single :class:`BranchEventSolution`
+        :type graph_branch_event_id_tuple: :class:`GraphSolution`
+        """
+        graph = (
+            TestEventSolutionDynamicControl.test_parse_dynamic_control_events(
+                graph_branch_event_id_tuple=graph_branch_event_id_tuple
+            )
+        )
+        graph_solutions = graph.combine_nested_solutions(
+            num_loops=2,
+            num_branches=10
+        )
+        for graph_sol in graph_solutions:
+            graph_sol.update_control_event_counts()
+            assert graph_sol.events[2].dynamic_control_events["X"].count == 10
+
+    @staticmethod
+    def test_update_control_event_counts_branches_multiple_branch_events(
+        graph_multiple_branches: GraphSolution
+    ) -> None:
+        """Tests the method :class:`GraphSolution`.`count_dynamic_controls`
+        for a :class:`GraphSolution` with multiple un-nested
+        :class:`BranchEventSolution`'s
+
+        :param graph_multiple_branches: Fixture providing a
+        :class:`GraphSolution` with multiple un-nested
+        :class:`BranchEventSolution`'s
+        :type graph_multiple_branches: :class:`GraphSolution`
+        """
+        graph = (
+            TestEventSolutionDynamicControl.test_parse_dynamic_control_events(
+                graph_branch_event_id_tuple=graph_multiple_branches
+            )
+        )
+        graph_solutions = graph.combine_nested_solutions(
+            num_loops=2,
+            num_branches=10
+        )
+        for graph_sol in graph_solutions:
+            graph_sol.update_control_event_counts()
+            for key in [2, 5]:
+                assert (
+                    graph_sol.events[key].dynamic_control_events["X"].count
+                ) == 10
+
+    @staticmethod
+    def test_update_control_event_counts_loops_single_loop_event(
+        graph_loop_event_count_id_tuple: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`update_control_event_counts`
+        for a :class:`GraphSolution` with a single :class:`LoopEventSolution`
+        with a provider and user of a :class:`DynamicControl` LCNT added
+
+        :param graph_loop_event_count_id_tuple: Fixture providing a
+        :class:`GraphSolution` with a :class:`LoopEventSolution` with a
+        :class:`DynamicControl` LCNT
+        :type graph_loop_event_count_id_tuple: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_loop_event_count_id_tuple.combine_nested_solutions(
+                num_loops=10,
+                num_branches=2
+            )
+        )
+        graph_solutions[0].update_control_event_counts()
+        assert (
+            graph_solutions[0].events[1].dynamic_control_events["X"].count
+        ) == 10
+
+    @staticmethod
+    def test_update_control_event_counts_loops_multiple_loop_events(
+        graph_multiple_loop_events: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`update_control_event_counts`
+        for a :class:`GraphSolution` with multiple :class:`LoopEventSolution`'s
+        with providers and users of a :class:`DynamicControl` LCNT added
+
+        :param graph_multiple_loop_events: Fixture providing a
+        :class:`GraphSolution` containing multiple :class:`LoopEventSolution`'s
+        :type graph_multiple_loop_events: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_multiple_loop_events.combine_nested_solutions(
+                num_loops=10,
+                num_branches=2
+            )
+        )
+        graph_solutions[0].update_control_event_counts()
+        for provider_event_key in [1, 4]:
+            assert (
+                graph_solutions[0].events[
+                    provider_event_key
+                ].dynamic_control_events["X"].count
+            ) == 10
+
+    @staticmethod
+    def test_update_control_event_counts_branches_nested_branch_prov_inside(
+        graph_branch_nested_branch: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`update_control_event_counts`
+        for a :class:`GraphSolution` with a single :class:`BranchEventSolution`
+        containing a nested :class:`BranchEventSolution`. The provider of the
+        :class:`DynamicControl` is inside the top level
+        :class:`BranchEventSolution`
+
+        :param graph_branch_nested_branch: Fixture providing a
+        :class:`GraphSolution` containing a :class:`BranchEventSolution` with
+        a nested :class:`BranchEventSolution` with provider inside top level
+        :class:`BranchEventSolution`
+        :type graph_branch_nested_branch: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_branch_nested_branch.combine_nested_solutions(
+                num_loops=2,
+                num_branches=4
+            )
+        )
+        for graph_sol in graph_solutions:
+            assert len(graph_sol.branch_points) == 5
+            graph_sol.update_control_event_counts()
+            for branch_event in graph_sol.branch_points.values():
+                assert (
+                    branch_event.dynamic_control_events["X"].count
+                ) == 4
+
+    @staticmethod
+    def test_update_control_event_counts_branches_nested_branch_prov_outside(
+        graph_branch_nested_branch_prov_outside: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`update_control_event_counts`
+        for a :class:`GraphSolution` with a single :class:`BranchEventSolution`
+        containing a nested :class:`BranchEventSolution`. The provider of the
+        :class:`DynamicControl` is outside the top level
+        :class:`BranchEventSolution`
+
+        :param graph_branch_nested_branch_prov_outside: Fixture providing a
+        :class:`GraphSolution` containing a :class:`BranchEventSolution` with
+        a nested :class:`BranchEventSolution` with provider outside the top
+        level :class:`BranchEventSolution`
+        :type graph_branch_nested_branch_prov_outside: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_branch_nested_branch_prov_outside.combine_nested_solutions(
+                num_loops=2,
+                num_branches=4
+            )
+        )
+        for graph_sol in graph_solutions:
+            graph_sol.update_control_event_counts()
+            assert len(graph_sol.branch_points) == 5
+            # first branch (both user and provider)
+            branch_event_1 = graph_sol.branch_points[2]
+            assert (
+                branch_event_1.dynamic_control_events["X"].count
+            ) == 4
+            # second branch provider before first branch and user within first
+            # branch
+            provider_event = graph_sol.events[1]
+            # the count should be 16 as the branch user is within another
+            # branch
+            assert (
+                provider_event.dynamic_control_events["X"].count
+            ) == 16
+
+    @staticmethod
+    def test_update_control_event_counts_branches_nested_loop_prov_outside(
+        graph_branch_nested_loop_prov_outside: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`update_control_event_counts`
+        for a :class:`GraphSolution` with a single :class:`BranchEventSolution`
+        containing a nested :class:`LoopEventSolution`. The provider of the
+        :class:`DynamicControl` is outside the top level
+        :class:`BranchEventSolution`
+
+        :param graph_branch_nested_loop_prov_outside: Fixture providing a
+        :class:`GraphSolution` containing a :class:`BranchEventSolution` with
+        a nested :class:`LoopEventSolution` with provider outside the top
+        level :class:`BranchEventSolution`
+        :type graph_branch_nested_loop_prov_outside: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_branch_nested_loop_prov_outside.combine_nested_solutions(
+                num_loops=2,
+                num_branches=2
+            )
+        )
+        assert len(graph_solutions) == 1
+        graph_solutions[0].update_control_event_counts()
+        provider_event = graph_solutions[0].events[1]
+        assert (
+            provider_event.dynamic_control_events["X"].count
+        ) == 4
+        branch_event_1 = graph_solutions[0].branch_points[2]
+        assert (
+            branch_event_1.dynamic_control_events["X"].count
+        ) == 2
+
+    @staticmethod
+    def test_update_control_event_counts_branches_nested_loop_prov_inside(
+        graph_branch_nested_loop_prov_inside: GraphSolution
+    ) -> None:
+        """Tests the method
+        :class:`GraphSolution`.`update_control_event_counts`
+        for a :class:`GraphSolution` with a single :class:`BranchEventSolution`
+        containing a nested :class:`LoopEventSolution`. The provider of the
+        :class:`DynamicControl` is inside the top level
+        :class:`BranchEventSolution`
+
+        :param graph_branch_nested_loop_prov_inside: Fixture providing a
+        :class:`GraphSolution` containing a :class:`BranchEventSolution` with
+        a nested :class:`LoopEventSolution` with provider inside the top
+        level :class:`BranchEventSolution`
+        :type graph_branch_nested_loop_prov_inside: :class:`GraphSolution`
+        """
+        graph_solutions = (
+            graph_branch_nested_loop_prov_inside.combine_nested_solutions(
+                num_loops=4,
+                num_branches=4
+            )
+        )
+        assert len(graph_solutions) == 1
+        graph_solutions[0].update_control_event_counts()
+        for post_event in graph_solutions[0].branch_points[2].post_events:
+            assert (
+                post_event.dynamic_control_events["X"].count
+            ) == 4
+        branch_event_1 = graph_solutions[0].branch_points[2]
+        assert (
+            branch_event_1.dynamic_control_events["X"].count
+        ) == 4
