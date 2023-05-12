@@ -36,6 +36,7 @@ class EventSolution:
         is_branch: bool = False,
         is_break_point: bool = False,
         meta_data: Optional[dict] = None,
+        event_id_tuple: Optional[tuple[str, int]] = None,
         **kwargs
     ) -> None:
         """Constructor method
@@ -43,11 +44,15 @@ class EventSolution:
         self.is_branch = is_branch
         self.is_break_point = is_break_point
         self.meta_data = meta_data
+        self.event_id_tuple = event_id_tuple
         self.previous_events: list[EventSolution] = []
         self.post_events: list[EventSolution] = []
+        self.dynamic_control_events: dict[str, DynamicControl] = {}
         self.event_template_id: str = ""
         _ = kwargs
         self.count = 0
+        # parse meta data
+        self.parse_meta_data(meta_data)
 
     def __repr__(self) -> str:
         """Dunder method to return a string representation of the object
@@ -212,6 +217,16 @@ class EventSolution:
                 else "default_application_name"
             )
         }
+        # add dynamic control data if there is any
+        if self.dynamic_control_events:
+            dynamic_control_providers = (
+                self.create_dynamic_control_audit_event_data()
+            )
+            if dynamic_control_providers:
+                audit_json = {
+                    **audit_json,
+                    **self.create_dynamic_control_audit_event_data()
+                }
         if not self.is_start:
             audit_json["previousEventIds"] = self.get_previous_event_ids()
         return audit_json
@@ -249,6 +264,86 @@ class EventSolution:
             (self, event)
             for event in self.post_events
         ]
+
+    def parse_meta_data(
+        self,
+        meta_data: dict
+    ) -> None:
+        """Method to parse meta data into the instance
+
+        :param meta_data: Dictionary containing arbitrary meta data
+        :type meta_data: `dict`
+        """
+        if not meta_data:
+            return
+        if "dynamic_control_events" in meta_data:
+            self.parse_dynamic_control_events(
+                meta_data["dynamic_control_events"]
+            )
+        self.parse_event_id_tuple(meta_data)
+
+    def parse_event_id_tuple(
+        self,
+        meta_data: dict[str, str | int]
+    ) -> None:
+        """Method to parse event_id_tuple if both EventType and occurenceId
+        fields are in the input meta_data dictionary
+
+        :param meta_data: Input meta data dictionary
+        :type meta_data: `dict`[`str`, `str`  |  `int`]
+        """
+        if "EventType" in meta_data and "occurenceId" in meta_data:
+            self.event_id_tuple = (
+                meta_data["EventType"],
+                int(meta_data["occurenceId"])
+            )
+
+    def parse_dynamic_control_events(
+        self,
+        dynamic_control_events: dict[str, dict]
+    ) -> None:
+        """Method to parse dyanamic control data into the instance from a
+        dictionary
+
+        :param dynamic_control_events: Dictionary containing the dynamic
+        control data must contain the following key in the sub dictionary:
+        * `control_type`
+        * `provider`
+        * `user`
+        :type dynamic_control_events: `dict`[`str`, `dict`]
+        """
+        for name, dynamic_control_event in dynamic_control_events.items():
+            self.dynamic_control_events[
+                name
+            ] = DynamicControl(
+                control_type=dynamic_control_event["control_type"],
+                name=name,
+                provider=(
+                    dynamic_control_event["provider"]["EventType"],
+                    int(dynamic_control_event["provider"]["occurenceId"])
+                ),
+                user=(
+                    dynamic_control_event["user"]["EventType"],
+                    int(dynamic_control_event["user"]["occurenceId"])
+                )
+            )
+
+    def create_dynamic_control_audit_event_data(
+        self
+    ) -> dict[str, dict]:
+        """Method to create dynamic control provider audit event data
+
+        :return: Returns the dynamic control event data
+        :rtype: `dict`[`str`, `dict`]
+        """
+        return {
+            name: {
+                "dataItemType": dynamic_control.control_type,
+                "value": dynamic_control.count
+            }
+            for name, dynamic_control in self.dynamic_control_events.items()
+            if self.event_id_tuple == dynamic_control.provider
+        }
 
 
 class SubGraphEventSolution(EventSolution, ABC):
@@ -1262,10 +1357,92 @@ class GraphSolution:
             ax=axis,
             with_labels=True,
             arrows=True,
-            node_size=500,
-            font_size=8
+            node_size=1000,
+            font_size=16
         )
         return fig
+
+    def update_control_event_counts(self) -> None:
+        """Method to update the counts on provider control events
+        """
+        for event in self.events.values():
+            dynamic_controls = GraphSolution.filter_user_dynamic_controls(
+                event
+            )
+            if not dynamic_controls:
+                continue
+            self.count_dynamic_controls(
+                event=event,
+                dynamic_controls=dynamic_controls
+            )
+
+    @staticmethod
+    def filter_user_dynamic_controls(
+        event: EventSolution
+    ) -> dict[str, DynamicControl]:
+        """Method to filter out user dynamic controls from the input
+        :class:`EventSolution`'s `dynamic_control_events` attribute
+
+        :param event: Input :class:`EventSolution`
+        :type event: :class:`EventSolution`
+        :return: Returns a filtered dict with only provider dynamic controls
+        :rtype: `dict`[`str`, :class:`DynamicControl`]
+        """
+        return {
+            name: dynamic_control
+            for name, dynamic_control
+            in event.dynamic_control_events.items()
+            if dynamic_control.provider == event.event_id_tuple
+        }
+
+    @staticmethod
+    def count_dynamic_controls(
+        event: EventSolution,
+        dynamic_controls: dict[str, DynamicControl],
+        seen_events: set = None
+    ) -> None:
+        """Method to count the dynamic controls of a provider event.
+        Recursively checks all paths and finds the required control events and
+        updates
+
+        :param event: The input :class:`EventSolution`
+        :type event: :class:`EventSolution`
+        :param dynamic_controls: Dictionary of :class:`DynamicControl`'s to
+        search for and update
+        :type dynamic_controls: `dict`[`str`, :class:`DynamicControl`]
+        :param seen_events: `set` of events whose forward paths have already
+        been traversed, defaults to `None`
+        :type seen_events: `set`, optional
+        """
+        if not seen_events:
+            seen_events = set()
+        if not dynamic_controls:
+            return
+        for post_event in event.post_events:
+            if post_event in seen_events:
+                continue
+            seen_events.add(post_event)
+            for dynamic_control in dynamic_controls.values():
+                dynamic_control.handle_update(post_event=post_event)
+            GraphSolution.count_dynamic_controls(
+                event=post_event,
+                dynamic_controls=dynamic_controls,
+                seen_events=seen_events
+            )
+
+    @staticmethod
+    def get_graph_solutions_updated_control_counts(
+        graph_solutions: Iterable[GraphSolution]
+    ) -> None:
+        """Method to update the control counts for an :class:`Iterable` of
+        :class:`GraphSolution`'s
+
+        :param graph_solutions: :class:`Iterable` of :class:`GraphSolution`'s
+        :type graph_solutions: :class:`Iterable`[:class:`GraphSolution`]
+        """
+        # count all dynamic controls
+        for graph_sol in graph_solutions:
+            graph_sol.update_control_event_counts()
 
 
 def get_audit_event_jsons_and_templates(
@@ -1334,3 +1511,101 @@ def get_categorised_audit_event_jsons(
         for category, graph_sol_valid_bool_pair
         in categorised_graph_solutions.items()
     }
+
+
+class DynamicControl:
+    """Class to hold dynamic control data
+
+    :param control_type: The type of control either LOOPCOUNT or BRANCHCOUNT
+    :type control_type: `str`
+    :param name: The name of the dynamic control
+    :type name: `str`
+    :param provider: The provider tuple identifying the event and its
+    occurence id
+    :type provider: `tuple`[`str`, `int`]
+    :param user: The user tuple identifying the event and its
+    occurence id
+    :type user: `tuple`[`str`, `int`]
+    """
+    def __init__(
+        self,
+        control_type: str,
+        name: str,
+        provider: tuple[str, int],
+        user: tuple[str, int]
+    ) -> None:
+        """Constructor method
+        """
+        self.control_type = control_type
+        self.name = name
+        self.provider = provider
+        self.user = user
+        self.count = 0
+
+    @property
+    def count(self) -> int:
+        """Property `count` getter for the count
+
+        :return: Returns the count
+        :rtype: `int`
+        """
+        return self._count
+
+    @count.setter
+    def count(self, update_val: int) -> None:
+        """Property `count` setter for the count
+
+        :param update_val: The value with which to update the property
+        :type update_val: `int`
+        """
+        self._count = update_val
+
+    def update_count(self) -> None:
+        """Method to update the count by 1
+        """
+        self.count += 1
+
+    def handle_update(
+        self,
+        post_event: EventSolution
+    ) -> None:
+        """Method to handle and update for a given
+        :class:`EventSolution`
+
+        :param post_event: The :class:`EventSolution` with which to update the
+        count
+        :type post_event: :class:`EventSolution`
+        """
+        if self.control_type == "LOOPCOUNT":
+            self.handle_loop_update(post_event)
+        elif self.control_type == "BRANCHCOUNT":
+            self.handle_branch_update(post_event)
+
+    def handle_loop_update(
+        self,
+        post_event: EventSolution
+    ) -> None:
+        """Method to handle and update for a loop for a given
+        :class:`EventSolution`
+
+        :param post_event: The :class:`EventSolution` with which to update the
+        count
+        :type post_event: :class:`EventSolution`
+        """
+        if self.user == post_event.event_id_tuple:
+            self.update_count()
+
+    def handle_branch_update(
+        self,
+        post_event: EventSolution
+    ) -> None:
+        """Method to handle and update for a branch for a given
+        :class:`EventSolution`
+
+        :param post_event: The :class:`EventSolution` with which to update the
+        count
+        :type post_event: :class:`EventSolution`
+        """
+        for prev_event in post_event.previous_events:
+            if self.user == prev_event.event_id_tuple:
+                self.update_count()
