@@ -11,6 +11,7 @@ from test_event_generator.solutions import (
     get_audit_event_jsons_and_templates,
     GraphSolution
 )
+from test_event_generator.io.parse_puml import get_graph_defs_from_puml
 
 
 def main(args: list[str]) -> None:
@@ -63,6 +64,14 @@ def main(args: list[str]) -> None:
             file_paths=file_paths,
             out_sub_dir=out_sub_dir
         )
+    elif "--puml" in args:
+        graph_defs = {}
+        for file_path in file_paths:
+            graph_defs |= get_graph_defs_from_puml_file(
+                file_path,
+                out_sub_dir
+            )
+
     for output_path_prefix, graph_def in graph_defs.items():
         graph_sols = get_graph_sols_for_graph_def(
             graph_def=graph_def,
@@ -97,6 +106,37 @@ def get_arg_value(
     """
     index = args.index(arg)
     return args[index + 1]
+
+
+def get_graph_defs_from_puml_file(
+    puml_file_path: str,
+    out_sub_dir: Optional[str] = None
+) -> dict:
+    """Method to get graph defs from a single puml file
+
+    :param puml_file_path: The file path of the puml file
+    :type puml_file_path: `str`
+    :param out_sub_dir: An optional out sub directory, defaults to `None`
+    :type out_sub_dir: :class:`Optional`[`str`], optional
+    :return: Dictionary of graph defs with output path prefix as keys
+    :rtype: `dict`
+    """
+    # get output path prefix
+    output_path_prefix = get_output_path_prefix(
+        puml_file_path,
+        out_sub_dir
+    )
+    output_path_prefix = os.path.split(output_path_prefix)[0]
+    # load puml file
+    with open(puml_file_path, 'r', encoding="utf8") as file:
+        puml_file = file.read()
+    # get graph_defs
+    graph_defs = get_graph_defs_from_puml(puml_file)
+    graph_defs = {
+        os.path.join(output_path_prefix, name): graph_def
+        for name, graph_def in graph_defs.items()
+    }
+    return graph_defs
 
 
 def get_graph_defs_from_file_paths(
@@ -137,13 +177,16 @@ def get_output_path_prefix(
     (creates if directory doesn't exist), defaults to `None`
     :type out_sub_dir: :class:`Optional`[`str`], optional
     :raises RuntimeError: Raises a :class:`RuntimeError` if the file does not
-    indicate it is json.
+    indicate it is json or puml.
     :return: Returns the output path prefix that files will be saved to
     :rtype: `str`
     """
-    if ".json" not in file_path:
-        raise RuntimeError("File must be of json type")
-    output_path_prefix = file_path.split(".json")[0]
+    if ".json" not in file_path and ".puml" not in file_path:
+        raise RuntimeError("File must be of json  or puml type")
+    if ".json" in file_path:
+        output_path_prefix = file_path.split(".json")[0]
+    else:
+        output_path_prefix = file_path.split(".puml")[0]
     # if there is an output subdirectory update the pathing
     if out_sub_dir:
         path_split = os.path.split(output_path_prefix)
