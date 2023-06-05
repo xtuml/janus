@@ -4,11 +4,16 @@ Tests for graph.py
 """
 from copy import deepcopy
 from typing import Type
+from itertools import product
 
 import pytest
-from ortools.sat.python.cp_model import CpModel, CpSolver
+import numpy as np
+from ortools.sat.python.cp_model import CpModel, CpSolver, IntVar
+
+
 from test_event_generator.graph import Graph
 from test_event_generator.core.event import Event, LoopEvent
+from test_event_generator.core.edge import Edge
 from test_event_generator.core.group import ORGroup, XORGroup, ANDGroup, Group
 from test_event_generator.solutions import (
     EventSolution,
@@ -20,6 +25,9 @@ from test_event_generator.utils.utils import solve_model
 from tests.utils import (
     check_length_attr,
     check_solution_correct
+)
+from tests.test_event_generator.core.test_group import (
+    get_main_group_update_list
 )
 
 
@@ -1566,7 +1574,7 @@ class TestGraphGenerateSolutions(TestLoopFixtures):
         of dictionaries of edge solutions for the graph
         :type expected_edge_solutions: `list`[`dict`[`str`, `int`]]
         """
-        graph_solutions = Graph.get_nested_unexpanded_graph_solutions(
+        graph_solutions, _ = Graph.get_nested_unexpanded_graph_solutions(
             graph_events_solutions=expected_solutions,
             graph_edges_solutions=expected_edge_solutions,
             events=parsed_graph.events
@@ -1683,7 +1691,7 @@ class TestGraphGenerateSolutions(TestLoopFixtures):
         """
         parsed_graph_with_loop.solve()
         solutions = parsed_graph_with_loop.solutions
-        graph_solutions = Graph.get_nested_unexpanded_graph_solutions(
+        graph_solutions, _ = Graph.get_nested_unexpanded_graph_solutions(
             graph_events_solutions=solutions["Event"],
             graph_edges_solutions=solutions["Edge"],
             events=parsed_graph_with_loop.events
@@ -1723,7 +1731,7 @@ class TestGraphGenerateSolutions(TestLoopFixtures):
         """
         parsed_graph_with_nested_loop_in_branch.solve()
         solutions = parsed_graph_with_nested_loop_in_branch.solutions
-        graph_solutions = Graph.get_nested_unexpanded_graph_solutions(
+        graph_solutions, _ = Graph.get_nested_unexpanded_graph_solutions(
             graph_events_solutions=solutions["Event"],
             graph_edges_solutions=solutions["Edge"],
             events=parsed_graph_with_nested_loop_in_branch.events
@@ -1821,4 +1829,739 @@ class TestGraphGenerateSolutions(TestLoopFixtures):
         assert all(
             count == 3
             for count in sequence_appearance_count.values()
+        )
+
+
+class TestGraphGenerateInvalidSolutions:
+    """Group of tests for generating invalid AND and XOR constraint breaks
+    """
+    @staticmethod
+    def check_constraint_removal(
+        model: CpModel,
+        solver: CpSolver,
+        all_variables: list[IntVar]
+    ) -> None:
+        """Helper function to test constraint removal
+
+        :param model: The :class:`CpModel`
+        :type model: :class:`CpModel`
+        :param solver: The :class:`CpSolver`
+        :type solver: :class:`CpSolver`
+        :param all_variables: The list of :class:`IntVar`
+        variables in the model
+        :type all_variables: `list`[:class:`IntVar`]
+        """
+        solutions = solve_model(
+            model=model,
+            solver=solver,
+            variables=all_variables
+        )
+        # with no constraints there should be 2^5 solutions
+        len(solutions) == 32
+        # generate the expected solutions
+        expected_sols = np.asarray(
+            list(product((0, 1), repeat=5)), dtype=int
+        )
+        # actual solutions as array
+        actual_sols = np.asarray([
+            [val for val in solution.values()]
+            for solution in solutions
+        ], dtype=int)
+        assert np.array_equiv(
+            np.sort(expected_sols, axis=0),
+            np.sort(actual_sols, axis=0)
+        )
+
+    @staticmethod
+    def test_remove_xor_constraint(
+        model: CpModel,
+        solver: CpSolver,
+        sub_variables: list[Edge | Group]
+    ) -> None:
+        """Tests the method :class:`Graph`.`remove_xor_constraint`
+
+        :param model: Fixture providing the :class:`CpModel`
+        :type model: :class:`CpModel`
+        :param solver: Fixture providing the :class:`CpSolver`
+        :type solver: :class:`CpSolver`
+        :param sub_variables: Fixture providing a list of :class:`Edge`'s
+        and/or :class:`Group`'s that will be contained in the over-arching
+        :class:`XORGroup` to test constraint removal
+        :type sub_variables: `list`[:class:`Edge`  |  :class:`Group`]
+        """
+        all_variables, xor_group = get_main_group_update_list(
+            model=model,
+            sub_variables=sub_variables,
+            group_class=XORGroup,
+            uid="xor_group"
+        )
+        # remove xor constraint
+        Graph.remove_xor_constraint(xor_group)
+        # check with all constraint removed
+        TestGraphGenerateInvalidSolutions.check_constraint_removal(
+            model=model,
+            solver=solver,
+            all_variables=all_variables
+        )
+
+    @staticmethod
+    def test_remove_and_constraint(
+        model: CpModel,
+        solver: CpSolver,
+        sub_variables: list[Edge | Group]
+    ) -> None:
+        """Tests the method :class:`Graph`.`remove_and_constraint`
+
+        :param model: Fixture providing the :class:`CpModel`
+        :type model: :class:`CpModel`
+        :param solver: Fixture providing the :class:`CpSolver`
+        :type solver: :class:`CpSolver`
+        :param sub_variables: Fixture providing a list of :class:`Edge`'s
+        and/or :class:`Group`'s that will be contained in the over-arching
+        :class:`ANDGroup` to test constraint removal
+        :type sub_variables: `list`[:class:`Edge`  |  :class:`Group`]
+        """
+        all_variables, xor_group = get_main_group_update_list(
+            model=model,
+            sub_variables=sub_variables,
+            group_class=ANDGroup,
+            uid="and_group"
+        )
+        # remove xor constraint
+        Graph.remove_and_constraint(xor_group)
+        # check with all constraint removed
+        TestGraphGenerateInvalidSolutions.check_constraint_removal(
+            model=model,
+            solver=solver,
+            all_variables=all_variables
+        )
+
+    @staticmethod
+    def solve_and_check_or_constraints(
+        model: CpModel,
+        solver: CpSolver,
+        variables: list[IntVar]
+    ) -> None:
+        """Helper function to solve model and check or constraints are correct
+
+        :param model: The :class:`CpModel`
+        :type model: :class:`CpModel`
+        :param solver: The :class:`CpSolver`
+        :type solver: :class:`CpSolver`
+        :param variables: The list of :class:`IntVar`
+        variables in the model
+        :type variables: `list`[:class:`IntVar`]
+        """
+        solutions = solve_model(
+            model=model,
+            solver=solver,
+            variables=variables
+        )
+        # should be 2^4 solutions and all variables must satisfy binary OR
+        assert len(solutions) == 16
+        for solution in solutions:
+            assert (
+                solution["edge_1"] | solution["edge_2"]
+                | solution["group_1"] | solution["group_2"]
+                == solution["group"]
+            )
+
+    @staticmethod
+    def test_add_or_constraint(
+        model: CpModel,
+        solver: CpSolver,
+        sub_variables: list[Edge | Group]
+    ) -> None:
+        """Tests the method :class:`Graph`.`add_or_constraints`
+
+        :param model: Fixture providing the :class:`CpModel`
+        :type model: :class:`CpModel`
+        :param solver: Fixture providing the :class:`CpSolver`
+        :type solver: :class:`CpSolver`
+        :param sub_variables: Fixture providing a list of :class:`Edge`'s
+        and/or :class:`Group`'s that will be contained in the over-arching
+        :class:`Group` to test or constraint addition
+        :type sub_variables: `list`[:class:`Edge`  |  :class:`Group`]
+        """
+        all_variables, group = get_main_group_update_list(
+            model=model,
+            sub_variables=sub_variables,
+            group_class=Group,
+            uid="group"
+        )
+        # add the OR constraint
+        Graph.add_or_constraints(group)
+        # solve and check
+        TestGraphGenerateInvalidSolutions.solve_and_check_or_constraints(
+            model=model,
+            solver=solver,
+            variables=all_variables
+        )
+
+    @staticmethod
+    def test_replace_xor_constraint(
+        model: CpModel,
+        solver: CpSolver,
+        sub_variables: list[Edge | Group]
+    ) -> None:
+        """Tests the method :class:`Graph`.`replace_xor_constraint`
+
+        :param model: Fixture providing the :class:`CpModel`
+        :type model: :class:`CpModel`
+        :param solver: Fixture providing the :class:`CpSolver`
+        :type solver: :class:`CpSolver`
+        :param sub_variables: Fixture providing a list of :class:`Edge`'s
+        and/or :class:`Group`'s that will be contained in the over-arching
+        :class:`Group` to test XOR constraint replacement with OR constraint
+        :type sub_variables: `list`[:class:`Edge`  |  :class:`Group`]
+        """
+        all_variables, xor_group = get_main_group_update_list(
+            model=model,
+            sub_variables=sub_variables,
+            group_class=XORGroup,
+            uid="group"
+        )
+        # replace xor constraint
+        Graph.replace_xor_constraint(
+            xor_group
+        )
+        # solve and check
+        TestGraphGenerateInvalidSolutions.solve_and_check_or_constraints(
+            model=model,
+            solver=solver,
+            variables=all_variables
+        )
+
+    @staticmethod
+    def test_replace_and_constraint(
+        model: CpModel,
+        solver: CpSolver,
+        sub_variables: list[Edge | Group]
+    ) -> None:
+        """Tests the method :class:`Graph`.`replace_and_constraint`
+
+        :param model: Fixture providing the :class:`CpModel`
+        :type model: :class:`CpModel`
+        :param solver: Fixture providing the :class:`CpSolver`
+        :type solver: :class:`CpSolver`
+        :param sub_variables: Fixture providing a list of :class:`Edge`'s
+        and/or :class:`Group`'s that will be contained in the over-arching
+        :class:`Group` to test XOR constraint replacement with OR constraint
+        :type sub_variables: `list`[:class:`Edge`  |  :class:`Group`]
+        """
+        all_variables, and_group = get_main_group_update_list(
+            model=model,
+            sub_variables=sub_variables,
+            group_class=ANDGroup,
+            uid="group"
+        )
+        # replace xor constraint
+        Graph.replace_and_constraint(
+            and_group
+        )
+        # solve and check
+        TestGraphGenerateInvalidSolutions.solve_and_check_or_constraints(
+            model=model,
+            solver=solver,
+            variables=all_variables
+        )
+
+    @staticmethod
+    def test_replace_constraints_and_group(
+        model: CpModel,
+        solver: CpSolver,
+        sub_variables: list[Edge | Group]
+    ) -> None:
+        """Tests the method :class:`Graph`.`replace_constraints` with the
+        input function :class:`Graph`.`replace_and_constraint`
+
+        :param model: Fixture providing the :class:`CpModel`
+        :type model: :class:`CpModel`
+        :param solver: Fixture providing the :class:`CpSolver`
+        :type solver: :class:`CpSolver`
+        :param sub_variables: Fixture providing a list of :class:`Edge`'s
+        and/or :class:`Group`'s that will be contained in the over-arching
+        :class:`Group` to test AND constraint replacement with OR constraint
+        :type sub_variables: `list`[:class:`Edge`  |  :class:`Group`]
+        """
+        xor_sub_variables = deepcopy(sub_variables)
+        xor_model = xor_sub_variables[0].model
+        xor_solver = CpSolver()
+
+        all_variables_and, and_group = get_main_group_update_list(
+            model=model,
+            sub_variables=sub_variables,
+            group_class=ANDGroup,
+            uid="group"
+        )
+        all_variables_xor, xor_group = get_main_group_update_list(
+            model=xor_model,
+            sub_variables=xor_sub_variables,
+            group_class=XORGroup,
+            uid="group"
+        )
+        Graph.replace_constraints(
+            groups=[and_group, xor_group],
+            group_type=ANDGroup,
+            replace_func=Graph.replace_and_constraint
+        )
+        TestGraphGenerateInvalidSolutions.solve_and_check_or_constraints(
+            model=model,
+            solver=solver,
+            variables=all_variables_and
+        )
+        # check xor constraints are still held
+        xor_solutions = solve_model(
+            model=xor_model,
+            solver=xor_solver,
+            variables=all_variables_xor
+        )
+        assert len(xor_solutions) == 5
+        for solution in xor_solutions:
+            assert (
+                solution["edge_1"] ^ solution["edge_2"]
+                ^ solution["group_1"] ^ solution["group_2"]
+                == solution["group"]
+            )
+
+    @staticmethod
+    def test_replace_constraints_xor_group(
+        model: CpModel,
+        solver: CpSolver,
+        sub_variables: list[Edge | Group]
+    ) -> None:
+        """Tests the method :class:`Graph`.`replace_constraints` with the
+        input function :class:`Graph`.`replace_xor_constraint`
+
+        :param model: Fixture providing the :class:`CpModel`
+        :type model: :class:`CpModel`
+        :param solver: Fixture providing the :class:`CpSolver`
+        :type solver: :class:`CpSolver`
+        :param sub_variables: Fixture providing a list of :class:`Edge`'s
+        and/or :class:`Group`'s that will be contained in the over-arching
+        :class:`Group` to test AND constraint replacement with OR constraint
+        :type sub_variables: `list`[:class:`Edge`  |  :class:`Group`]
+        """
+        xor_sub_variables = deepcopy(sub_variables)
+        xor_model = xor_sub_variables[0].model
+        xor_solver = CpSolver()
+
+        all_variables_and, and_group = get_main_group_update_list(
+            model=model,
+            sub_variables=sub_variables,
+            group_class=ANDGroup,
+            uid="group"
+        )
+        all_variables_xor, xor_group = get_main_group_update_list(
+            model=xor_model,
+            sub_variables=xor_sub_variables,
+            group_class=XORGroup,
+            uid="group"
+        )
+        Graph.replace_constraints(
+            groups=[and_group, xor_group],
+            group_type=XORGroup,
+            replace_func=Graph.replace_xor_constraint
+        )
+        TestGraphGenerateInvalidSolutions.solve_and_check_or_constraints(
+            model=xor_model,
+            solver=xor_solver,
+            variables=all_variables_xor
+        )
+        # check and constraints are still held
+        and_solutions = solve_model(
+            model=model,
+            solver=solver,
+            variables=all_variables_and
+        )
+        assert len(and_solutions) == 2
+        for solution in and_solutions:
+            assert (
+                solution["edge_1"] & solution["edge_2"]
+                & solution["group_1"] & solution["group_2"]
+                == solution["group"]
+            )
+
+    @staticmethod
+    def test_replace_constraints_and_solve_invalid_graph_and(
+        parsed_graph: Graph,
+        expected_solutions_and_to_or: list[dict[str, int]]
+    ) -> None:
+        """Tests the method
+        :class:`Graph`.`replace_constraints_and_solve_invalid_graph` with
+        input parameters `group_type` as :class:`ANDGroup` and `replace_func`
+        as :class:`Graph`.`replace_and_constraint`
+
+        :param parsed_graph: Fixture providing a parsed :class:`Graph`
+        :type parsed_graph: :class:`Graph`
+        :param expected_solutions_and_to_or: Fixture providing a list of
+        dictionaries of expected solutions for hte test
+        :type expected_solutions_and_to_or: `list`[`dict`[`str`, `int`]]
+        """
+        Graph.replace_constraints_and_solve_invalid_graph(
+            invalid_graph=parsed_graph,
+            group_type=ANDGroup,
+            replace_func=Graph.replace_and_constraint
+        )
+        solutions_event = parsed_graph.solutions["Event"]
+        assert len(parsed_graph.solutions["Event"]) == 4
+        sorted_solutions = sorted(
+            solutions_event, key=lambda x: sum(
+                i * val
+                for i, val in enumerate(x.values())
+            )
+        )
+        for sorted_sol, expected_sol in zip(
+            sorted_solutions, expected_solutions_and_to_or
+        ):
+            for event_sol, expected_event_sol in zip(
+                sorted_sol.values(), expected_sol.values()
+            ):
+                assert event_sol == expected_event_sol
+
+    @staticmethod
+    def test_replace_constraints_and_solve_invalid_graph_xor(
+        parsed_graph: Graph,
+        expected_solutions_xor_to_or: list[dict[str, int]]
+    ) -> None:
+        """Tests the method
+        :class:`Graph`.`replace_constraints_and_solve_invalid_graph` with
+        input parameters `group_type` as :class:`XORGroup` and `replace_func`
+        as :class:`Graph`.`replace_xor_constraint`
+
+        :param parsed_graph: Fixture providing a parsed :class:`Graph`
+        :type parsed_graph: :class:`Graph`
+        :param expected_solutions_and_to_or: Fixture providing a list of
+        dictionaries of expected solutions for hte test
+        :type expected_solutions_and_to_or: `list`[`dict`[`str`, `int`]]
+        """
+        Graph.replace_constraints_and_solve_invalid_graph(
+            invalid_graph=parsed_graph,
+            group_type=XORGroup,
+            replace_func=Graph.replace_xor_constraint
+        )
+        solutions_event = parsed_graph.solutions["Event"]
+        assert len(parsed_graph.solutions["Event"]) == 3
+        sorted_solutions = sorted(
+            solutions_event, key=lambda x: sum(
+                i * val
+                for i, val in enumerate(x.values())
+            )
+        )
+        for sorted_sol, expected_sol in zip(
+            sorted_solutions, expected_solutions_xor_to_or
+        ):
+            for event_sol, expected_event_sol in zip(
+                sorted_sol.values(), expected_sol.values()
+            ):
+                assert event_sol == expected_event_sol
+
+    @staticmethod
+    def test_extract_invalid_solution_indices(
+        expected_solutions: list[dict[int, str]],
+        expected_solutions_and_to_or: list[dict[int, str]]
+    ) -> None:
+        """Tests the method :class:`Graph`.`extract_invalid_solution_indices`
+
+        :param expected_solutions: Fixture providing a list of expected valid
+        solutions for the test
+        :type expected_solutions: `list`[`dict`[`int`, `str`]]
+        :param expected_solutions_and_to_or: Fixture providing a list of
+        expected solutions when AND constraints have been replaced with OR
+        constraints
+        :type expected_solutions_and_to_or: `list`[`dict`[`int`, `str`]]
+        """
+        invalid_indexes = Graph.extract_invalid_solution_indices(
+            invalid_solutions=expected_solutions_and_to_or,
+            valid_solutions=expected_solutions
+        )
+        assert len(invalid_indexes) == 2
+        for invalid_index, check_index in zip(
+            sorted(invalid_indexes), sorted([1, 2])
+        ):
+            assert invalid_index == check_index
+
+    @staticmethod
+    def check_invalid_filtered_solution(
+        filtered_solutions: list[dict[str, int]]
+    ) -> None:
+        """Helper function to check that the expected behaviour for invalid
+        filtered solutions is correct
+
+        :param filtered_solutions: List of filtered solutions
+        :type filtered_solutions: `list`[`dict`[`str`, `int`]]
+        """
+        assert len(filtered_solutions) == 2
+        expected_filtered_solutions = [
+            {
+                "Event_A": 1,
+                "Event_B": 0,
+                "Event_C": 1,
+                "Event_D": 0,
+                "Event_E": 1,
+            },
+            {
+                "Event_A": 1,
+                "Event_B": 0,
+                "Event_C": 0,
+                "Event_D": 1,
+                "Event_E": 1,
+            },
+        ]
+        filtered_solutions = sorted(
+            filtered_solutions,
+            key=lambda x: sum(
+                i * val
+                for i, val in enumerate(x.values())
+            )
+        )
+        expected_filtered_solutions = sorted(
+            expected_filtered_solutions,
+            key=lambda x: sum(
+                i * val
+                for i, val in enumerate(x.values())
+            )
+        )
+        for filtered_sol, expected_sol in zip(
+            filtered_solutions, expected_filtered_solutions
+        ):
+            for event_sol, expected_event_sol in zip(
+                filtered_sol.values(), expected_sol.values()
+            ):
+                assert event_sol == expected_event_sol
+
+    @staticmethod
+    def test_filter_solutons_by_indices_array(
+        expected_solutions_and_to_or: list[dict[int, str]]
+    ) -> None:
+        """Tests the method
+        :class:`Graph`.`filter_solutions_by_indices_iterable`
+
+        :param expected_solutions_and_to_or: Fixture providing a list of
+        expected solutions when AND constraints have been replaced with OR
+        constraints
+        :type expected_solutions_and_to_or: `list`[`dict`[`int`, `str`]]
+        """
+        filtered_solutions = Graph.filter_solutions_by_indices_iterable(
+            indices=[1, 2],
+            solutions={
+                "Event": expected_solutions_and_to_or
+            }
+        )
+        TestGraphGenerateInvalidSolutions.check_invalid_filtered_solution(
+            filtered_solutions=filtered_solutions["Event"]
+        )
+
+    @staticmethod
+    def test_get_filtered_invalid_solutions(
+        expected_solutions: list[dict[int, str]],
+        expected_solutions_and_to_or: list[dict[int, str]]
+    ) -> None:
+        """Tests the method :class:`Graph`.`get_filtered_invalid_solutions`
+
+        :param expected_solutions: Fixture providing a list of expected valid
+        solutions for the test
+        :type expected_solutions: `list`[`dict`[`int`, `str`]]
+        :param expected_solutions_and_to_or: Fixture providing a list of
+        expected solutions when AND constraints have been replaced with OR
+        constraints
+        :type expected_solutions_and_to_or: `list`[`dict`[`int`, `str`]]
+        """
+        filtered_solutions = Graph.get_filtered_invalid_solutions(
+            invalid_solutions={
+                "Event": expected_solutions_and_to_or
+            },
+            valid_solutions={
+                "Event": expected_solutions
+            }
+        )
+        TestGraphGenerateInvalidSolutions.check_invalid_filtered_solution(
+            filtered_solutions=filtered_solutions["Event"]
+        )
+
+    @staticmethod
+    def test_get_combined_invalid_graph_solutions_no_sub_graph_events(
+        expected_solutions: list[dict[str, int]],
+        expected_solutions_and_to_or: list[dict[str, int]],
+        expected_edge_solutions: list[dict[str, int]],
+        expected_edge_solutions_and_to_or: list[dict[str, int]],
+        parsed_graph: Graph
+    ) -> None:
+        """Tests the method
+        :class:`Graph`.`get_combined_invalid_graph_solutions`
+
+        :param expected_solutions: Fixture providing a list of expected valid
+        solutions for the test
+        :type expected_solutions: `list`[`dict`[`int`, `str`]]
+        :param expected_solutions_and_to_or: Fixture providing a list of
+        expected solutions when AND constraints have been replaced with OR
+        constraints
+        :type expected_solutions_and_to_or: `list`[`dict`[`int`, `str`]]
+        :param expected_edge_solutions: Fixture providing a list of expected
+        edge valid solutions for the test
+        :type expected_edge_solutions: `list`[`dict`[`int`, `str`]]
+        :param expected_edge_solutions_and_to_or: Fixture providing a list of
+        expected edge solutions when AND constraints have been replaced with OR
+        constraints
+        :type expected_edge_solutions_and_to_or: `list`[`dict`[`int`, `str`]]
+        :param parsed_graph: Fixture providing a parsed :class:`Graph`
+        :type parsed_graph: :class:`Graph`
+        """
+        valid_solutions = {
+            "Event": expected_solutions,
+            "Edge": expected_edge_solutions
+        }
+        invalid_solutions = {
+            "Event": expected_solutions_and_to_or,
+            "Edge": expected_edge_solutions_and_to_or
+        }
+        events = parsed_graph.events
+        combined_graph_solutions = Graph.get_combined_invalid_graph_solutions(
+            invalid_solutions=invalid_solutions,
+            valid_solutions=valid_solutions,
+            invalid_graph_events=events,
+            events_with_sub_graph_event_solutions={}
+        )
+        assert len(combined_graph_solutions) == 2
+        sequences = [
+            ["Event_A", "Event_D", "Event_E"],
+            ["Event_A", "Event_C", "Event_E"]
+        ]
+        for graph_sol, sequence in zip(
+            combined_graph_solutions,
+            sequences
+        ):
+            assert check_solution_correct(
+                graph_sol,
+                sequence
+            )
+
+    @staticmethod
+    def test_get_combined_invalid_graph_solutions_with_sub_graph_events(
+        expected_solutions: list[dict[str, int]],
+        expected_solutions_and_to_or: list[dict[str, int]],
+        expected_edge_solutions: list[dict[str, int]],
+        expected_edge_solutions_and_to_or: list[dict[str, int]],
+        parsed_graph_with_loop_and_branch: Graph,
+    ) -> None:
+        """Tests :class:`Graph`.`get_combined_invalid_graph_solutions`
+
+        :param expected_solutions: Fixture providing list of dictionary of
+        expected event values
+        :type expected_solutions: `list`[`dict`[`str`, `int`]]
+        :param expected_solutions_and_to_or: Fixture providing list of
+        dictionary of expected event values with all AND constraints changed
+        to OR
+        :type expected_solutions_and_to_or: `list`[`dict`[`str`, `int`]]
+        :param expected_edge_solutions: Fixture providing list of dictionary of
+        expected edge values
+        :type expected_edge_solutions: `list`[`dict`[`str`, `int`]]
+        :param expected_edge_solutions_and_to_or: Fixture providing list of
+        dictionary of expected edge values with all AND constraints changed
+        to OR
+        :type expected_edge_solutions_and_to_or: `list`[`dict`[`str`, `int`]]
+        :param parsed_graph_with_loop_and_branch: Fixture providing a
+        :class:`Graph` that contains both loop and branch events
+        :type parsed_graph_with_loop_and_branch: :class:`Graph`
+        """
+        valid_solutions = {
+            "Event": expected_solutions,
+            "Edge": expected_edge_solutions
+        }
+        invalid_solutions = {
+            "Event": expected_solutions_and_to_or,
+            "Edge": expected_edge_solutions_and_to_or
+        }
+        events = parsed_graph_with_loop_and_branch.events
+        event_solution_f = EventSolution(
+            meta_data={
+                "EventType": "Event_F"
+            }
+        )
+        loop_event_sub_graph_sol = GraphSolution()
+        loop_event_sub_graph_sol.parse_event_solutions(
+            [event_solution_f]
+        )
+        loop_event_solution = LoopEventSolution(
+            graph_solutions=[loop_event_sub_graph_sol],
+            meta_data={
+                "EventType": "Event_C"
+            }
+        )
+        loop_event_solution.expand(2)
+        event_solution_g = EventSolution(
+            meta_data={
+                "EventType": "Event_G"
+            }
+        )
+        branch_event_sub_graph_sol = GraphSolution()
+        branch_event_sub_graph_sol.parse_event_solutions(
+            [event_solution_g]
+        )
+        branch_event_solution = BranchEventSolution(
+            graph_solutions=[branch_event_sub_graph_sol],
+            meta_data={
+                "EventType": "Event_D"
+            }
+        )
+        branch_event_solution.expand(2)
+        events_with_sub_graph_event_solutions = {
+            "Event_C": loop_event_solution,
+            "Event_D": branch_event_solution
+        }
+        combined_solutions = Graph.get_combined_invalid_graph_solutions(
+            invalid_solutions=invalid_solutions,
+            valid_solutions=valid_solutions,
+            invalid_graph_events=events,
+            events_with_sub_graph_event_solutions=(
+                events_with_sub_graph_event_solutions
+            )
+        )
+        TestGraphGenerateInvalidSolutions.check_invalid_and_loop_branch(
+            combined_solutions
+        )
+
+    @staticmethod
+    def check_invalid_and_loop_branch(
+        combined_solutions: list[GraphSolution]
+    ) -> None:
+        """Helper function to check invalid sequence solutions
+
+        :param combined_solutions: List of :class:`GraphSolution`'s
+        :type combined_solutions: `list`[:class:`GraphSolution`]
+        """
+        assert len(combined_solutions) == 2
+        sequences = [
+            ["Event_A", "Event_D", "Event_G", "Event_E"],
+            ["Event_A", "Event_F", "Event_F", "Event_E"]
+        ]
+        for graph_sol, sequence in zip(
+            combined_solutions,
+            sequences
+        ):
+            assert check_solution_correct(
+                graph_sol,
+                sequence
+            )
+
+    @staticmethod
+    def test_get_invalid_and_paths(
+        parsed_graph_with_loop_and_branch: Graph
+    ) -> None:
+        """Method to test method :class:`Graph`.`get_invalid_and_paths`
+
+        :param parsed_graph_with_loop_and_branch: Fixture providing a
+        :class:`Graph` that contains both loop and branch events
+        :type parsed_graph_with_loop_and_branch: :class:`Graph`
+        """
+        parsed_graph_with_loop_and_branch.solve()
+        parsed_graph_with_loop_and_branch.get_all_combined_graph_solutions(
+            num_loops=2,
+            num_branches=2
+        )
+        combined_invalid_solutions = (
+            parsed_graph_with_loop_and_branch.get_invalid_and_paths()
+        )
+        TestGraphGenerateInvalidSolutions.check_invalid_and_loop_branch(
+            combined_invalid_solutions
         )

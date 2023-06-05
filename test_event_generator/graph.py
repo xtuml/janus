@@ -1,14 +1,16 @@
 # pylint: disable=R0904
 # pylint: disable=R0913
+# pylint: disable=C0302
 """
 Graph class to hold model info
 """
-from typing import Type, Union, Iterable, Optional
+from typing import Type, Union, Iterable, Optional, Callable
 from copy import copy
 
 from ortools.sat.python.cp_model import CpModel, CpSolver, IntVar
 from flatdict import FlatterDict
 import numpy as np
+import pandas as pd
 from test_event_generator.core.edge import Edge
 from test_event_generator.core.group import ORGroup, XORGroup, ANDGroup, Group
 from test_event_generator.core.event import Event, LoopEvent, BranchEvent
@@ -36,7 +38,11 @@ class Graph:
         self.edges: dict[str, Edge] = {}
         self.groups: dict[tuple, Group] = {}
         self.events: dict[str, Union[Event, LoopEvent]] = {}
-        self.solutions = None
+        self.solutions: Optional[dict[str, list[dict[str, int]]]] = None
+        self.events_with_sub_graph_event_solutions: Optional[
+            dict[str, LoopEventSolution | BranchEventSolution]
+        ] = None
+        self.parsed_graph_def = None
 
     def add_edges(self, edge_uids: list[str]) -> None:
         """Method to add :class:`Edge` instances to instance based on the uids
@@ -136,6 +142,8 @@ class Graph:
         :param graph_def: The standard graph definition input.
         :type graph_def: `dict`
         """
+        # set the parsed_graph_def attribute
+        self.parsed_graph_def = graph_def
         # get edges from graph definition and add them to instance
         edges = self.extract_edges(graph_def)
         self.add_edges(edges)
@@ -371,7 +379,10 @@ class Graph:
             case _:
                 return ORGroup
 
-    def solve(self):
+    def solve(
+        self,
+        solve_nested: bool = True
+    ) -> None:
         """Method to solve the ILP model and return solutions in terms of
         Events.
         """
@@ -402,9 +413,10 @@ class Graph:
                 self.solutions["Group"]
             )
         # solve all loop event subgraphs and branch events
-        self.solve_loop_events_sub_graphs(
-            loop_events=self.filter_events(self.events.values())
-        )
+        if solve_nested:
+            self.solve_loop_events_sub_graphs(
+                loop_events=self.filter_events(self.events.values())
+            )
 
     def convert_to_event_solutions(
         self,
@@ -488,10 +500,18 @@ class Graph:
         :rtype: `list`[:class:`GraphSolution`]
         """
         # recursive create graph solutions for all nested sub graphs
-        graph_solutions = self.get_nested_unexpanded_graph_solutions(
+        (
+            graph_solutions,
+            events_with_sub_graph_event_solutions
+        ) = self.get_nested_unexpanded_graph_solutions(
             graph_events_solutions=self.solutions["Event"],
             graph_edges_solutions=self.solutions["Edge"],
             events=self.events
+        )
+        # save events_with_sub_graph_event_solutions to the instance for
+        # invalid solution calculations
+        self.events_with_sub_graph_event_solutions = (
+            events_with_sub_graph_event_solutions
         )
         # expand and combine all graph solutions
         expanded_and_combined_graph_solutions = []
@@ -513,7 +533,10 @@ class Graph:
         graph_events_solutions: list[dict[str, int]],
         graph_edges_solutions: list[dict[str, int]],
         events: dict[str, "Event"],
-    ) -> list[GraphSolution]:
+    ) -> tuple[
+        list[GraphSolution],
+        dict[str, LoopEventSolution | BranchEventSolution]
+    ]:
         """Method to get all the nested unexpanded :class:`GraphSolution`'s
         for all the :class:`Event`'s that contain a subgraph from the ILP
         solutions provided
@@ -544,7 +567,7 @@ class Graph:
                 events_with_sub_graph_event_solutions
             )
         )
-        return graph_solutions
+        return graph_solutions, events_with_sub_graph_event_solutions
 
     @staticmethod
     def process_sub_graph_event_solution(
@@ -567,7 +590,7 @@ class Graph:
         else:
             raise RuntimeError("Not instance of LoopEvent or BranchEvent")
         sub_graph = event.sub_graph
-        graph_solutions = (
+        graph_solutions, _ = (
             Graph.get_nested_unexpanded_graph_solutions(
                 graph_events_solutions=sub_graph.solutions["Event"],
                 graph_edges_solutions=sub_graph.solutions["Edge"],
@@ -825,3 +848,335 @@ class Graph:
                 event_solution.add_post_event(
                     event_solution_instances[out_edge.event_in.uid]
                 )
+
+    def get_all_invalid_constraint_breaks(
+        self
+    ) -> dict[str, tuple[list[GraphSolution], bool]]:
+        """Method to generate all invalid xor and and constraint breaks and
+        categorise them in a dictionary
+
+        :return: Returns a dictionary with category and a tuple containing the
+        list of :class:`GraphSolution`'s and a boolean indicating that the
+        solution is invalid i.e. `False`
+        :rtype: `dict`[`str`, `tuple`[`list`[:class:`GraphSolution`], `bool`]]
+        """
+        invalid_xor_paths = self.get_invalid_xor_paths()
+        invalid_and_paths = self.get_invalid_and_paths()
+        categorised_invalid_solutions = {
+            "XORConstraintBreaks": (
+                invalid_xor_paths,
+                False
+            ),
+            "ANDConstraintBreaks": (
+                invalid_and_paths,
+                False
+            )
+        }
+        return categorised_invalid_solutions
+
+    def get_invalid_xor_paths(self) -> list[GraphSolution]:
+        """Method to get the invalid XOR sequences after finding valid
+        solutions
+
+        :return: Returns a list of the invalid XOR :class:`GraphSolution`'s
+        :rtype: `list`[:class:`GraphSolution`]
+        """
+        invalid_xor_graph = Graph()
+        invalid_xor_graph.parse_graph_def(self.parsed_graph_def)
+        # remove XOR constraints and solve
+        self.replace_constraints_and_solve_invalid_graph(
+            invalid_graph=invalid_xor_graph,
+            group_type=XORGroup,
+            replace_func=Graph.replace_xor_constraint
+        )
+        # get combined invalid solutions
+        invalid_solutions = Graph.get_combined_invalid_graph_solutions(
+            invalid_solutions=invalid_xor_graph.solutions,
+            valid_solutions=self.solutions,
+            invalid_graph_events=invalid_xor_graph.events,
+            events_with_sub_graph_event_solutions=(
+                self.events_with_sub_graph_event_solutions
+            )
+        )
+        return invalid_solutions
+
+    def get_invalid_and_paths(self) -> list[GraphSolution]:
+        """Method to get the invalid AND sequences after finding valid
+        solutions
+
+        :return: Returns a list of the invalid AND :class:`GraphSolution`'s
+        :rtype: `list`[:class:`GraphSolution`]
+        """
+        invalid_and_graph = Graph()
+        invalid_and_graph.parse_graph_def(self.parsed_graph_def)
+        # remove AND constraint and solve
+        self.replace_constraints_and_solve_invalid_graph(
+            invalid_graph=invalid_and_graph,
+            group_type=ANDGroup,
+            replace_func=Graph.replace_and_constraint
+        )
+        # get combined invalid solutions
+        invalid_solutions = Graph.get_combined_invalid_graph_solutions(
+            invalid_solutions=invalid_and_graph.solutions,
+            valid_solutions=self.solutions,
+            invalid_graph_events=invalid_and_graph.events,
+            events_with_sub_graph_event_solutions=(
+                self.events_with_sub_graph_event_solutions
+            )
+        )
+        return invalid_solutions
+
+    @staticmethod
+    def replace_constraints_and_solve_invalid_graph(
+        invalid_graph: "Graph",
+        group_type: Type[XORGroup | ANDGroup],
+        replace_func: Callable
+    ) -> None:
+        """Method to take valid :class:`Graph` and replace XOR or AND
+        constraints by OR constraints and solve the :class:`Graph`
+
+        :param invalid_graph: The valid :class:`Graph` to have constraints
+        replaced
+        :type invalid_graph: :class:`Graph`
+        :param group_type: The type of constraint to be replaced
+        :type group_type: :class:`Type`[:class:`XORGroup`  |
+        :class:`ANDGroup`]
+        :param replace_func: The function used to replace the constraints
+        :type replace_func: :class:`Callable`
+        """
+        # remove constraints
+        Graph.replace_constraints(
+            groups=invalid_graph.groups.values(),
+            group_type=group_type,
+            replace_func=replace_func
+        )
+        # solve
+        invalid_graph.solve(
+            solve_nested=False
+        )
+
+    @staticmethod
+    def replace_constraints(
+        groups: Iterable[Group],
+        group_type: Type[XORGroup | ANDGroup],
+        replace_func: Callable
+    ) -> None:
+        """Method to replace constraints
+
+        :param groups: An iterable of :class:`Group`'s
+        :type groups: :class:`Iterable`[:class:`Group`]
+        :param group_type: The type of :class:`Group` constraint to replace by
+        OR constraints
+        :type group_type: :class:`Type`[:class:`XORGroup`  |
+        :class:`ANDGroup`]
+        :param replace_func: The function used to replace the constraints
+        :type replace_func: Callable
+        """
+        for group in groups:
+            if not isinstance(group, group_type):
+                continue
+            replace_func(group)
+
+    @staticmethod
+    def replace_xor_constraint(
+        group: XORGroup
+    ) -> None:
+        """Method to replace :class:`XORGroup` constraint with
+        OR constraint
+
+        :param group: The :class:`XORGroup` to replace the constraint with OR
+        constraint
+        :type group: :class:`XORGroup`
+        """
+        Graph.remove_xor_constraint(
+            group=group
+        )
+        Graph.add_or_constraints(group)
+
+    @staticmethod
+    def remove_xor_constraint(
+        group: XORGroup
+    ) -> None:
+        """Method to remove :class:`XORGroup` constraint
+
+        :param group: The :class:`XORGroup` to replace the constraint with OR
+        constraint
+        :type group: :class:`XORGroup`
+        """
+        group.constraints["XOR"].Proto().Clear()
+
+    @staticmethod
+    def replace_and_constraint(
+        group: ANDGroup
+    ) -> None:
+        """Method to replace :class:`ANDGroup` constraint with
+        OR constraint
+
+        :param group: The :class:`ANDGroup` to replace the constraint with OR
+        constraint
+        :type group: :class:`ANDGroup`
+        """
+        Graph.remove_and_constraint(group)
+        Graph.add_or_constraints(group)
+
+    @staticmethod
+    def remove_and_constraint(
+        group: ANDGroup
+    ) -> None:
+        """Method to remove :class:`ANDGroup` constraint
+
+        :param group: The :class:`ANDGroup` to replace the constraint with OR
+        constraint
+        :type group: :class:`ANDGroup`
+        """
+        for constraint in group.constraints["AND"]:
+            constraint.Proto().Clear()
+
+    @staticmethod
+    def add_or_constraints(
+        group: Group
+    ) -> None:
+        """Method to add OR constraints
+
+        :param group: The :class:`Group` to set OR constraints for
+        :type group: :class:`Group`
+        """
+        group.set_off_constraint()
+        group.set_on_constraint()
+
+    @staticmethod
+    def get_combined_invalid_graph_solutions(
+        invalid_solutions: dict[str, list[str, int]],
+        valid_solutions: dict[str, list[dict[str, int]]],
+        invalid_graph_events: dict[str, Event],
+        events_with_sub_graph_event_solutions: dict[
+            str,
+            LoopEventSolution | BranchEventSolution
+        ]
+    ) -> list[GraphSolution]:
+        """Method to get a list of invalid :class:`GraphSolution`'s from
+
+        :param invalid_solutions: Dictionary of  lists of invalid solutions
+        :type invalid_solutions: `dict`[`str`, `list`[`str`, `int`]]
+        :param valid_solutions: Dictionary of lists of valid solutions
+        :type valid_solutions: `dict`[`str`, `list`[`dict`[`str`, `int`]]]
+        :param invalid_graph_events: Dictionary of the :class:`Event`'s
+        :type invalid_graph_events: `dict`[`str`, :class:`Event`]
+        :param events_with_sub_graph_event_solutions: Dictionary of
+        :class:`SubGrapheventSolution`'s
+        :type events_with_sub_graph_event_solutions: `dict`[ `str`,
+        :class:`LoopEventSolution`  |  :class:`BranchEventSolution` ]
+        :return: Returns a list of :class:`GraphSolution`'s of the
+        invalid solutions minus the valid solutions
+        :rtype: list[GraphSolution]
+        """
+        # get filtered invalid solutions
+        filtered_invalid_solutions = Graph.get_filtered_invalid_solutions(
+            invalid_solutions=invalid_solutions,
+            valid_solutions=valid_solutions
+        )
+        # get uncombined GraphSolutions
+        uncombined_graph_solutions = Graph.get_unexpanded_graph_solutions(
+            graph_events_solutions=filtered_invalid_solutions["Event"],
+            graph_edges_solutions=filtered_invalid_solutions["Edge"],
+            events=invalid_graph_events,
+            events_with_sub_graph_event_solutions=(
+                events_with_sub_graph_event_solutions
+            )
+        )
+        # combine SubGraphEventSolution's
+        combined_graph_solutions = []
+        for graph_sol in uncombined_graph_solutions:
+            combined_graph_solutions.extend(
+                graph_sol.combine_sub_graph_event_solutions_expanded_solutions(
+
+                )
+            )
+        # update control event counts
+        GraphSolution.get_graph_solutions_updated_control_counts(
+            combined_graph_solutions
+        )
+        return combined_graph_solutions
+
+    @staticmethod
+    def get_filtered_invalid_solutions(
+        invalid_solutions: dict[str, list[dict[str, int]]],
+        valid_solutions: dict[str, list[dict[str, int]]]
+    ) -> dict[str, list[dict[str, int]]]:
+        """Method to filter valid solutions out from a mix of invalid and
+        valid solutions
+
+        :param invalid_solutions: Dictionary of  lists of invalid solutions
+        :type invalid_solutions: `dict`[`str`, `list`[`str`, `int`]]
+        :param valid_solutions: Dictionary of lists of valid solutions
+        :type valid_solutions: `dict`[`str`, `list`[`dict`[`str`, `int`]]]
+        :return: Returns a dictionary of list of only invalid solutions
+        :rtype: `dict`[`str`, `list`[`dict`[`str`, `int`]]]
+        """
+        invalid_indexes = Graph.extract_invalid_solution_indices(
+            invalid_solutions=list(invalid_solutions.values())[0],
+            valid_solutions=list(valid_solutions.values())[0]
+        )
+        filtered_invalid_solutions = (
+            Graph.filter_solutions_by_indices_iterable(
+                indices=invalid_indexes,
+                solutions=invalid_solutions
+            )
+        )
+        return filtered_invalid_solutions
+
+    @staticmethod
+    def extract_invalid_solution_indices(
+        invalid_solutions: list[dict[str, int]],
+        valid_solutions: list[dict[str, int]]
+    ) -> np.ndarray[np.int64]:
+        """Method to extract only invalid solution indexes from a list of
+        solutions
+
+        :param invalid_solutions: Dictionary of  lists of invalid solutions
+        :type invalid_solutions: `dict`[`str`, `list`[`str`, `int`]]
+        :param valid_solutions: Dictionary of lists of valid solutions
+        :type valid_solutions: `dict`[`str`, `list`[`dict`[`str`, `int`]]]
+        :return: Returns the indexes that correspond to only invalid solutions
+        :rtype: `numpy`.:class:`ndarray`[`numpy`.:class:`int64`]
+        """
+        concat_solutions = invalid_solutions + valid_solutions
+        concat_solutions_df = pd.DataFrame.from_dict(
+            concat_solutions,
+            dtype=int
+        )
+        _, indexes, counts = np.unique(
+            concat_solutions_df,
+            return_index=True,
+            return_counts=True,
+            axis=0
+        )
+        invalid_indexes = indexes[counts == 1]
+        return invalid_indexes
+
+    @staticmethod
+    def filter_solutions_by_indices_iterable(
+        indices: Iterable[int],
+        solutions: dict[str, list[dict[str, int]]]
+    ) -> dict[str, list[dict[str, int]]]:
+        """Method to filter out solutions that are not the given input indices
+
+        :param indices: Indices to keep
+        :type indices: :class:`Iterable`[`int`]
+        :param solutions: The Dictionary of lists of solutions to filter
+        :type solutions: `dict`[`str`, `list`[`dict`[`str`, `int`]]]
+        :return: Returns the filtered solutions
+        :rtype: `dict`[`str`, `list`[`dict`[`str`, `int`]]]
+        """
+        # initialise dictionary
+        filtered_solutions = {
+            sol_type: []
+            for sol_type in solutions.keys()
+        }
+        # loop over indices and add solution index to relevant solution type
+        for index in indices:
+            for sol_type in solutions.keys():
+                filtered_solutions[sol_type].append(
+                    solutions[sol_type][index]
+                )
+        return filtered_solutions

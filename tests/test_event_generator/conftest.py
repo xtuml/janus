@@ -203,6 +203,81 @@ def expected_solutions() -> list[dict[str, int]]:
 
 
 @pytest.fixture
+def expected_solutions_and_to_or() -> list[dict[str, int]]:
+    """Py-Test fixture that defines the event solutions for the above graph
+    definition.
+
+    :return: Returns a list of dictionaries that hold the event solutions for
+    two distinct solution paths.
+    :rtype: `list`[`dict`[`str`, `int`]]
+    """
+    return [
+        {
+            "Event_A": 1,
+            "Event_B": 1,
+            "Event_C": 0,
+            "Event_D": 0,
+            "Event_E": 0,
+        },
+        {
+            "Event_A": 1,
+            "Event_B": 0,
+            "Event_C": 1,
+            "Event_D": 0,
+            "Event_E": 1,
+        },
+        {
+            "Event_A": 1,
+            "Event_B": 0,
+            "Event_C": 0,
+            "Event_D": 1,
+            "Event_E": 1,
+        },
+        {
+            "Event_A": 1,
+            "Event_B": 0,
+            "Event_C": 1,
+            "Event_D": 1,
+            "Event_E": 1,
+        },
+    ]
+
+
+@pytest.fixture
+def expected_solutions_xor_to_or() -> list[dict[str, int]]:
+    """Py-Test fixture that defines the event solutions for the above graph
+    definition.
+
+    :return: Returns a list of dictionaries that hold the event solutions for
+    two distinct solution paths.
+    :rtype: `list`[`dict`[`str`, `int`]]
+    """
+    return [
+        {
+            "Event_A": 1,
+            "Event_B": 1,
+            "Event_C": 0,
+            "Event_D": 0,
+            "Event_E": 0,
+        },
+        {
+            "Event_A": 1,
+            "Event_B": 0,
+            "Event_C": 1,
+            "Event_D": 1,
+            "Event_E": 1,
+        },
+        {
+            "Event_A": 1,
+            "Event_B": 1,
+            "Event_C": 1,
+            "Event_D": 1,
+            "Event_E": 1,
+        },
+    ]
+
+
+@pytest.fixture
 def expected_group_solutions() -> list[dict[str, int]]:
     """Py-Test fixture to define the expected group defined solutions of the
     above graph definition.
@@ -249,6 +324,47 @@ def expected_edge_solutions() -> list[dict[str, int]]:
             "edge_A_D": 0,
             "edge_C_E": 0,
             "edge_D_E": 0
+        },
+        {
+            "edge_A_B": 0,
+            "edge_A_C": 1,
+            "edge_A_D": 1,
+            "edge_C_E": 1,
+            "edge_D_E": 1
+        },
+    ]
+
+
+@pytest.fixture
+def expected_edge_solutions_and_to_or() -> list[dict[str, int]]:
+    """Pytest fixture to provide the edge solutions for the above graph
+    definition
+
+    :return: List of dictionaries with keys as edge uid and values as the
+    value in the solutions
+    :rtype: `list`[`dict`[`str`, `int`]]
+    """
+    return [
+        {
+            "edge_A_B": 1,
+            "edge_A_C": 0,
+            "edge_A_D": 0,
+            "edge_C_E": 0,
+            "edge_D_E": 0
+        },
+        {
+            "edge_A_B": 0,
+            "edge_A_C": 1,
+            "edge_A_D": 0,
+            "edge_C_E": 1,
+            "edge_D_E": 0
+        },
+        {
+            "edge_A_B": 0,
+            "edge_A_C": 0,
+            "edge_A_D": 1,
+            "edge_C_E": 0,
+            "edge_D_E": 1
         },
         {
             "edge_A_B": 0,
@@ -554,4 +670,106 @@ def parsed_graph_with_nested_loop_in_branch(
     """
     graph = Graph()
     graph.parse_graph_def(graph_def=graph_def_with_nested_loop_in_branch)
+    return graph
+
+
+@pytest.fixture
+def graph_def_with_loop_and_branch():
+    json = {
+        "Event_A": {
+            "group_in": None,
+            "group_out": {
+                "type": "XOR",
+                "sub_groups": [
+                    "edge_A_B",
+                    {
+                        "type": "AND",
+                        "sub_groups": [
+                            "edge_A_C",
+                            "edge_A_D"
+                        ]
+                    }
+                ]
+            },
+            "meta_data": {"EventType": "Event_A"}
+        },
+        "Event_B": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "edge_A_B"
+                ]
+            },
+            "group_out": None,
+            "meta_data": {"EventType": "Event_B"}
+        },
+        "Event_C": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "edge_A_C"
+                ]
+            },
+            "group_out": {
+                "type": "OR",
+                "sub_groups": [
+                    "edge_C_E"
+                ]
+            },
+            "meta_data": {"EventType": "Event_C"},
+            "loop_graph": {
+                "Event_F": {
+                    "group_in": None,
+                    "group_out": None,
+                    "meta_data": {
+                        "EventType": "Event_F"
+                    }
+                }
+            }
+        },
+        "Event_D": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "edge_A_D"
+                ]
+            },
+            "group_out": {
+                "type": "OR",
+                "sub_groups": [
+                    "edge_D_E"
+                ]
+            },
+            "meta_data": {"EventType": "Event_D"},
+            "branch_graph": {
+                "Event_G": {
+                    "group_in": None,
+                    "group_out": None,
+                    "meta_data": {
+                        "EventType": "Event_G"
+                    }
+                }
+            }
+        },
+        "Event_E": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "edge_C_E",
+                    "edge_D_E"
+                ]
+            },
+            "group_out": None,
+            "meta_data": {"EventType": "Event_E"}
+        }
+    }
+    return json
+
+
+@pytest.fixture
+def parsed_graph_with_loop_and_branch(
+    graph_def_with_loop_and_branch: dict[str, dict]
+) -> Graph:
+    graph = Graph()
+    graph.parse_graph_def(graph_def_with_loop_and_branch)
     return graph

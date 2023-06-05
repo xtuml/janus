@@ -93,7 +93,7 @@ def get_main_group_update_list(
     sub_variables: list[Union[Edge, Group]],
     group_class: Type[Group],
     uid: str
-) -> list[IntVar]:
+) -> tuple[list[IntVar], Group]:
     """Helper function to get a list of all the IntVar variables after
     creating a new :class:`Group` instance that contains the input
     :class:`Edge`'s and :class:`Group`'s
@@ -122,7 +122,7 @@ def get_main_group_update_list(
         group_edge.variable
         for group_edge in sub_variables + [group]
     ]
-    return all_variables
+    return all_variables, group
 
 
 class TestConstraints:
@@ -152,7 +152,7 @@ class TestConstraints:
         :type sub_variables: `list`[:class:`Union`[:class:`Edge`,
         :class:`Group`]]
         """
-        all_variables = get_main_group_update_list(
+        all_variables, _ = get_main_group_update_list(
             model=model,
             sub_variables=sub_variables,
             group_class=ORGroup,
@@ -193,7 +193,7 @@ class TestConstraints:
         :type sub_variables: `list`[:class:`Union`[:class:`Edge`,
         :class:`Group`]]
         """
-        all_variables = get_main_group_update_list(
+        all_variables, _ = get_main_group_update_list(
             model=model,
             sub_variables=sub_variables,
             group_class=XORGroup,
@@ -233,7 +233,7 @@ class TestConstraints:
         :type sub_variables: `list`[:class:`Union`[:class:`Edge`,
         :class:`Group`]]
         """
-        all_variables = get_main_group_update_list(
+        all_variables, _ = get_main_group_update_list(
             model=model,
             sub_variables=sub_variables,
             group_class=ANDGroup,
