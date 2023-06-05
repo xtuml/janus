@@ -12,6 +12,8 @@ setup(
     packages=[
         'test_event_generator',
         'test_event_generator.core',
-        'test_event_generator.utils'
+        'test_event_generator.utils',
+        'test_event_generator.solutions',
+        'test_event_generator.io'
     ],
 )
