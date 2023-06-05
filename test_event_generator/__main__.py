@@ -2,14 +2,17 @@
 """
 import json
 import os
-from typing import Optional
+from typing import Optional, Iterable, Generator, Any
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from test_event_generator.graph import Graph
 from test_event_generator.solutions import (
     get_audit_event_jsons_and_templates,
-    GraphSolution
+    GraphSolution,
+    create_invalid_graph_solutions_from_valid_graph_solutions,
+    get_categorised_audit_event_jsons,
+    create_merge_invalid_stacked_solutions_from_valid_graph_sols
 )
 from test_event_generator.io.parse_puml import get_graph_defs_from_puml
 
@@ -73,8 +76,10 @@ def main(args: list[str]) -> None:
             )
 
     for output_path_prefix, graph_def in graph_defs.items():
+        graph = Graph()
+        graph.parse_graph_def(graph_def)
         graph_sols = get_graph_sols_for_graph_def(
-            graph_def=graph_def,
+            graph=graph,
             num_loops=num_loops,
             num_branches=num_branches
         )
@@ -84,11 +89,78 @@ def main(args: list[str]) -> None:
             job_name=job_name,
             return_plots=return_plots
         )
+
         handle_sequence_and_plot_output(
             audit_event_sequences_event_ids=audit_event_sequences_event_ids,
             output_path_prefix=output_path_prefix,
             save_fig=save_fig
         )
+
+        if "--invalid" in args:
+            handle_invalid_sols(
+                graph_sols=graph_sols,
+                graph=graph,
+                output_path_prefix=output_path_prefix,
+                save_fig=save_fig,
+                return_plots=return_plots
+            )
+
+
+def handle_invalid_sols(
+    graph_sols: Iterable[GraphSolution],
+    graph: Graph,
+    output_path_prefix: str,
+    save_fig: bool,
+    return_plots: bool
+) -> None:
+    """Method to handle generating invalid audit event sequences
+
+    :param graph_sols: Iterable of :class:`GraphSolution`'s from which to make
+    invalid sequences
+    :type graph_sols: :class:`Iterable`[:class:`GraphSolution`]
+    :param graph: The pre-solved :class:`Graph` from which to generate invalid
+    constraint violation solutions
+    :type graph: :class:`Graph`
+    :param output_path_prefix: The output path prefix used to help build the
+    output paths
+    :type output_path_prefix: `str`
+    :param save_fig: Boolean indicating whether to save figures
+    :type save_fig: `bool`
+    :param return_plots: Boolean indicating whether to return plots
+    :type return_plots: `bool`
+    """
+    categorised_invalid_graph_sols_from_graph_sols = (
+        create_invalid_graph_solutions_from_valid_graph_solutions(
+            graph_sols
+        )
+    )
+    # get invalid sols from graph
+    categorised_invalid_graph_sols_from_graph = (
+        graph.get_all_invalid_constraint_breaks()
+    )
+    categorised_invalid_graph_sols = {
+        **categorised_invalid_graph_sols_from_graph_sols,
+        **categorised_invalid_graph_sols_from_graph
+    }
+    # get dict of generated invalid audit event sequences
+    categorised_invalid_audit_event_sequences = (
+        get_categorised_audit_event_jsons(
+            categorised_invalid_graph_sols,
+            return_plots=return_plots
+        )
+    )
+    # add stacked solutions separately
+    categorised_invalid_audit_event_sequences["StackedSolutions"] = (
+        create_merge_invalid_stacked_solutions_from_valid_graph_sols(
+            graph_sols
+        ),
+        False
+    )
+    handle_categorised_audit_event_sequences(
+        categorised_invalid_audit_event_sequences,
+        output_path_prefix=output_path_prefix,
+        save_fig=save_fig
+    )
 
 
 def get_arg_value(
@@ -205,7 +277,7 @@ def get_output_path_prefix(
 
 
 def get_graph_sols_for_graph_def(
-    graph_def: dict,
+    graph: Graph,
     num_loops: int,
     num_branches: int
 ) -> list[GraphSolution]:
@@ -217,11 +289,11 @@ def get_graph_sols_for_graph_def(
     :type num_loops: `int`
     :param num_branches: Number of branches in expansion
     :type num_branches: `int`
-    :return: Returns a list of the :class:`GraphSolution` combinations
+    :return: Returns a list of the
+    :class:`GraphSolution` combinations
+    instance that generated them
     :rtype: `list`[:class:`GraphSolution`]
     """
-    graph = Graph()
-    graph.parse_graph_def(graph_def)
     graph.solve()
     graph_sols = graph.get_all_combined_graph_solutions(
         num_loops=num_loops,
@@ -283,7 +355,7 @@ def handle_plots(
 
 
 def handle_sequence_and_plot_output(
-    audit_event_sequences_event_ids: list[
+    audit_event_sequences_event_ids: Iterable[
         tuple[list[dict], list[str], Figure | None]
     ],
     output_path_prefix: str,
@@ -295,8 +367,9 @@ def handle_sequence_and_plot_output(
 
     :param audit_event_sequences_event_ids: list of tuples with list of
     sequences, list of event ids and an optional :class:`Figure` instance
-    :type audit_event_sequences_event_ids: `list`[ `tuple`[`list`[`dict`],
-    `list`[`str`], :class:`Figure`  |  `None`] ]
+    :type audit_event_sequences_event_ids:
+    :class:`Iterable`[`tuple`[`list`[`dict`], `list`[`str`], :class:`Figure`
+    |  `None`] ]
     :param output_path_prefix: The output path prefix
     :type output_path_prefix: `str`
     :param save_fig: Boolean indicating whether to save a figure or not
@@ -316,6 +389,84 @@ def handle_sequence_and_plot_output(
             save_fig=save_fig,
             sequence_num=i + 1
         )
+
+
+def handle_categorised_audit_event_sequences(
+    categorised_audit_event_sequences: dict[
+        str,
+        tuple[tuple[Generator[tuple[list[dict], list[str]], Any, None], bool]]
+    ],
+    output_path_prefix: str,
+    save_fig: bool = False
+) -> None:
+    """Method to handle categorised audit event sequences saving and plotting
+
+    :param categorised_audit_event_sequences: a dictionary with key as
+    category and
+    values a `tuple` with first entry a Generator of `tuple`'s with first
+    entry the
+    list of audit event jsons and second entry a list of the audit event ids.
+    The second entry in the highest level tuple is a boolean indicating whether
+    the category holds valid or invalid :class:`GraphSolution` sequences,
+    respectively.
+    :type categorised_audit_event_sequences: `dict`[`str`,
+    `tuple`[:class:`Generator`[`tuple`[`list`[`dict`],
+    `list`[`str`]]], `bool`]]
+    :param output_path_prefix: The current prefix for outputting file
+    :type output_path_prefix: `str`
+    :param save_fig: Boolean indicating whether to save figures or not,
+    defaults to `False`
+    :type save_fig: `bool`, optional
+    """
+    for category, data in categorised_audit_event_sequences.items():
+        output_path_prefix_category = make_categorised_output_directory(
+            output_path_prefix,
+            data[1],
+            category
+        )
+        handle_sequence_and_plot_output(
+            data[0],
+            output_path_prefix_category,
+            save_fig=save_fig
+        )
+
+
+def make_categorised_output_directory(
+    output_path_prefix: str,
+    valid: bool,
+    category: str
+) -> str:
+    """Method to create categorised output directory (if not already there)
+    and return the desired
+    path prefix for category and valid solution
+
+    :param output_path_prefix: the current output path prefix
+    :type output_path_prefix: `str`
+    :param valid: Boolean indicating if the solution is valid or invalid
+    :type valid: `bool`
+    :param category: The category the solutions are in
+    :type category: `str`
+    :return: Returns a prefix path for saving files to
+    :rtype: `str`
+    """
+    path_split = os.path.split(output_path_prefix)
+    out_directory = path_split[0]
+    for folder in [
+        "valid" if valid else "invalid",
+        category
+    ]:
+        out_directory = os.path.join(
+            out_directory,
+            folder
+        )
+        # if the directory doesn't exist make it
+        if not os.path.isdir(out_directory):
+            os.mkdir(out_directory)
+    output_path_prefix = os.path.join(
+        out_directory,
+        path_split[1]
+    )
+    return output_path_prefix
 
 
 if __name__ == "__main__":

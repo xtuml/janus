@@ -51,11 +51,15 @@ class Group:
         """
         self.group_variables = group_variables
         self.model = model
-        self.variable = self.model.NewBoolVar(uid)
         self.uid = uid
         self.is_into_event = is_into_event
         self.parent_group = parent_group
         self.event = event
+        self.set_variable_from_groups(
+            groups=group_variables,
+            uid=uid
+        )
+        self.constraints = {}
 
     def set_arbitrary_constraint(self, func: Callable, **kwargs) -> None:
         """Method to set an arbitrary constraint using a given function
@@ -118,6 +122,43 @@ class Group:
                 sub_group.event = self.event
                 sub_group.set_sub_groups_parent()
 
+    def set_off_constraint(self) -> None:
+        """Sets the off constraint for the Group i.e. when all sub-groups and
+        edges are 0 then the Group instance is 0.
+        """
+        self.constraints["OR_OFF"] = self.model.Add(self.variable <= sum(
+            group.variable for group in self.group_variables
+        ))
+
+    def set_on_constraint(self) -> None:
+        """Sets the on constraint for the Group i.e. when at least on of the
+        sub-groups and edges is 1 then the Group instance is 1.
+        """
+        self.constraints["OR_ON"] = []
+        for var in self.group_variables:
+            self.constraints["OR_ON"].append(
+                self.model.Add(var.variable <= self.variable)
+            )
+
+    def set_variable_from_groups(
+        self,
+        groups: list[Group | Edge],
+        uid: str
+    ) -> None:
+        """Sets the variable attribute given a list of :class:`Group`'s and/or
+        :class:`Edge`'s and a uid
+
+        :param groups: List of :class:`Group`'s and/or :class:`Edge`'s within
+        the instance of :class:`Group`
+        :type groups: `list`[:class:`Group`  |  :class:`Edge`]
+        :param uid: A unique identifier for the instance
+        :type uid: `str`
+        """
+        if len(groups) == 1:
+            self.variable = groups[0].variable
+        else:
+            self.variable = self.model.NewBoolVar(uid)
+
 
 class ORGroup(Group):
     """Group sub class used to implement a grouping of a mixture of
@@ -163,21 +204,6 @@ class ORGroup(Group):
         )
         self.set_on_constraint()
         self.set_off_constraint()
-
-    def set_off_constraint(self) -> None:
-        """Sets the off constraint for the Group i.e. when all sub-groups and
-        edges are 0 then the Group instance is 0.
-        """
-        self.model.Add(self.variable <= sum(
-            group.variable for group in self.group_variables
-        ))
-
-    def set_on_constraint(self) -> None:
-        """Sets the on constraint for the Group i.e. when at least on of the
-        sub-groups and edges is 1 then the Group instance is 1.
-        """
-        for var in self.group_variables:
-            self.model.Add(var.variable <= self.variable)
 
 
 class ANDGroup(Group):
@@ -230,8 +256,11 @@ class ANDGroup(Group):
         sub-groups and edges are all equal to 1 with the Group instance equal
         to 1 also.
         """
+        self.constraints["AND"] = []
         for var in self.group_variables:
-            self.model.Add(self.variable == var.variable)
+            self.constraints["AND"].append(
+                self.model.Add(self.variable == var.variable)
+            )
 
 
 class XORGroup(Group):
@@ -284,6 +313,6 @@ class XORGroup(Group):
         instance equal to 1 or all of the sub-groups and edges are equal to 0
         and the Group instance is equal to 0.
         """
-        self.model.Add(sum(
+        self.constraints["XOR"] = self.model.Add(sum(
             group.variable for group in self.group_variables
         ) == self.variable)
