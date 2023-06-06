@@ -1029,6 +1029,8 @@ def get_categorised_audit_event_jsons(
         str,
         tuple[Iterable[GraphSolution], bool]
     ],
+    is_template: bool = True,
+    job_name: str = "default_job_name",
     return_plots: bool = False
 ) -> dict[str, tuple[Generator[tuple[list[dict], list[str]]], bool]]:
     """Method to get categorised audit event jsons from a dictionary of a list
@@ -1041,6 +1043,17 @@ def get_categorised_audit_event_jsons(
     respectively.
     :type categorised_graph_solutions: `dict`[`str`,
     `tuple`[:class:`Iterable`[:class:`GraphSolution`], `bool`]]
+    :param is_template: Boolean indicating if the jobs are template
+    jobs or unique ids should be provided for events and the jobs,
+    defaults to `True`
+    :type is_template: `bool`, optional
+    :param job_name: The job definition name, defaults to
+    "default_job_name"
+    :type job_name: `str`, optional
+    :param return_plot: Boolean indicating if figure objects of the
+    topologically sorted graphs should be returned or not, defaults to
+    `False`
+    :type return_plot: `bool`, optional
     :return: Returns a dictionary with key as category and
     values a `tuple` with first entry a Generator of `tuple`'s with first
     entry the
@@ -1054,6 +1067,8 @@ def get_categorised_audit_event_jsons(
     return {
         category: (get_audit_event_jsons_and_templates(
             graph_sol_valid_bool_pair[0],
+            is_template=is_template,
+            job_name=job_name,
             return_plots=return_plots
         ), graph_sol_valid_bool_pair[1])
         for category, graph_sol_valid_bool_pair

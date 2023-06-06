@@ -101,6 +101,7 @@ def main(args: list[str]) -> None:
                 graph_sols=graph_sols,
                 graph=graph,
                 output_path_prefix=output_path_prefix,
+                job_name=job_name,
                 save_fig=save_fig,
                 return_plots=return_plots
             )
@@ -110,6 +111,7 @@ def handle_invalid_sols(
     graph_sols: Iterable[GraphSolution],
     graph: Graph,
     output_path_prefix: str,
+    job_name: str,
     save_fig: bool,
     return_plots: bool
 ) -> None:
@@ -124,6 +126,8 @@ def handle_invalid_sols(
     :param output_path_prefix: The output path prefix used to help build the
     output paths
     :type output_path_prefix: `str`
+    :param job_name: The name of the job
+    :type job_name: `str`
     :param save_fig: Boolean indicating whether to save figures
     :type save_fig: `bool`
     :param return_plots: Boolean indicating whether to return plots
@@ -146,13 +150,16 @@ def handle_invalid_sols(
     categorised_invalid_audit_event_sequences = (
         get_categorised_audit_event_jsons(
             categorised_invalid_graph_sols,
+            is_template=False,
+            job_name=job_name,
             return_plots=return_plots
         )
     )
     # add stacked solutions separately
     categorised_invalid_audit_event_sequences["StackedSolutions"] = (
         create_merge_invalid_stacked_solutions_from_valid_graph_sols(
-            graph_sols
+            graph_sols,
+            job_name=job_name
         ),
         False
     )
