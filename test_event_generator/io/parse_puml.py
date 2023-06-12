@@ -1,3 +1,4 @@
+# pylint: disable=R0902
 """Parser for .puml files
 """
 from __future__ import annotations
@@ -276,7 +277,7 @@ class Job:
         :rtype: :class:`Edge` | `None`
         """
         if event_start.is_end:
-            return
+            return None
         edge_tuple = (event_start, event_end)
         if edge_tuple not in self.edges:
             self.edges[edge_tuple] = Edge(
@@ -308,6 +309,8 @@ class Job:
     def full_parse(
         self
     ) -> None:
+        """Method to fully parse the parsed job attribute
+        """
         # count events
         self.count_event_occurence()
         # parse groups
@@ -387,68 +390,106 @@ class Job:
         entry = copied_job.pop(0)
         # check if the entry is EventData
         if isinstance(entry, EventData):
-            # if there is a prev entry create a Group for its group_in
-            if prev_entry:
-                entry.group_in = Group()
-            # if the previous entry is an event, the entry event only has a
-            # single edge coming in so create that edge and add it to the
-            # group_in
-            if isinstance(prev_entry, EventData):
-                edge = self.add_edge(
-                    event_start=prev_entry,
-                    event_end=entry
-                )
-                if edge:
-                    entry.group_in.add_sub_group(edge)
-                    # if the previous entry does not have a group out create on
-                    # and add the edge to it
-                    if not prev_entry.group_out:
-                        prev_entry.group_out = Group()
-                        prev_entry.group_out.add_sub_group(edge)
-            # if the entry is a Group
-            elif isinstance(prev_entry, Group):
-                # get all events going into the entry event by searching for
-                # the ending events in the previous entry Group
-                in_events = prev_entry.get_merge_end_events()
-                # loop over those events and create an edge and add to
-                # group_in and each of the ending events group_out,
-                # respectively
-                for event in in_events:
-                    edge = self.add_edge(
-                        event_start=event,
-                        event_end=entry
-                    )
-                    if not edge:
-                        continue
-                    entry.group_in.add_sub_group(edge)
-                    event.group_out = Group()
-                    event.group_out.add_sub_group(edge)
+            self.final_parse_event_data(
+                entry=entry,
+                prev_entry=prev_entry
+            )
         # if the entry is a Group
         elif isinstance(entry, Group):
-            # if previous entry is an EventData update its group_out to the
-            # entry
-            if isinstance(prev_entry, EventData):
-                if not prev_entry.group_out:
-                    prev_entry.group_out = entry
-            # loop over the entries paths and parse that path into the job.
-            # This will recursively search for nested paths within the entries
-            # paths
-            for path in entry.paths:
-                self.final_parse(
-                    mid_parse_job=path,
-                    prev_entry=prev_entry
-                )
-                # set top level edges
-                if isinstance(path[0], EventData):
-                    entry.add_sub_group(self.edges[(prev_entry, path[0])])
-                else:
-                    entry.add_sub_group(path[0])
+            self.final_parse_group(
+                entry=entry,
+                prev_entry=prev_entry
+            )
         # recursive parse for next entry
         if copied_job:
             self.final_parse(
                 mid_parse_job=copied_job,
                 prev_entry=entry
             )
+
+    def final_parse_event_data(
+        self,
+        entry: EventData,
+        prev_entry: Optional["EventData" | "Group"] = None
+    ) -> None:
+        """Method to parse an entry with its previous entry if it is an
+        instance of :class:`EventData`
+
+        :param entry: The entry to parse
+        :type entry: :class:`EventData`
+        :param prev_entry: The previous parsed entry, defaults to `None`
+        :type prev_entry: :class:`Optional`[:class:`EventData` |
+        :class:`Group`], optional
+        """
+        # if there is a prev entry create a Group for its group_in
+        if prev_entry:
+            entry.group_in = Group()
+        # if the previous entry is an event, the entry event only has a
+        # single edge coming in so create that edge and add it to the
+        # group_in
+        if isinstance(prev_entry, EventData):
+            edge = self.add_edge(
+                event_start=prev_entry,
+                event_end=entry
+            )
+            if edge:
+                entry.group_in.add_sub_group(edge)
+                # if the previous entry does not have a group out create on
+                # and add the edge to it
+                if not prev_entry.group_out:
+                    prev_entry.group_out = Group()
+                    prev_entry.group_out.add_sub_group(edge)
+        # if the entry is a Group
+        elif isinstance(prev_entry, Group):
+            # get all events going into the entry event by searching for
+            # the ending events in the previous entry Group
+            in_events = prev_entry.get_merge_end_events()
+            # loop over those events and create an edge and add to
+            # group_in and each of the ending events group_out,
+            # respectively
+            for event in in_events:
+                edge = self.add_edge(
+                    event_start=event,
+                    event_end=entry
+                )
+                if not edge:
+                    continue
+                entry.group_in.add_sub_group(edge)
+                event.group_out = Group()
+                event.group_out.add_sub_group(edge)
+
+    def final_parse_group(
+        self,
+        entry: Group,
+        prev_entry: Optional["EventData" | "Group"] = None
+    ) -> None:
+        """Method to parse an entry with its previous entry if it is an
+        instance of :class:`Group`
+
+        :param entry: The entry to parse
+        :type entry: :class:`EventData`
+        :param prev_entry: The previous parsed entry, defaults to `None`
+        :type prev_entry: :class:`Optional`[:class:`EventData` |
+        :class:`Group`], optional
+        """
+        # if previous entry is an EventData update its group_out to the
+        # entry
+        if isinstance(prev_entry, EventData):
+            if not prev_entry.group_out:
+                prev_entry.group_out = entry
+        # loop over the entries paths and parse that path into the job.
+        # This will recursively search for nested paths within the entries
+        # paths
+        for path in entry.paths:
+            self.final_parse(
+                mid_parse_job=path,
+                prev_entry=prev_entry
+            )
+            # set top level edges
+            if isinstance(path[0], EventData):
+                entry.add_sub_group(self.edges[(prev_entry, path[0])])
+            else:
+                entry.add_sub_group(path[0])
 
     def write_graph_definition(self) -> dict:
         """Method to write the graph definition from the instance events dict
@@ -600,6 +641,7 @@ class EventData:
         if counter < len(list_of_strings):
             string_remainder = list_of_strings.pop(counter)
             return string_remainder.replace(sub_string, "")
+        return None
 
     def parse_loop_count(
         self,
