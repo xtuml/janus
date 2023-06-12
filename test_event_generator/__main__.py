@@ -1,9 +1,11 @@
+# pylint: disable=R0913
 """Main function for running from command line
 """
 import json
 import os
 from typing import Optional, Iterable, Generator, Any
 
+import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from test_event_generator.graph import Graph
@@ -60,8 +62,8 @@ def main(args: list[str]) -> None:
     if "--plot" in args:
         return_plots = True
     if "--saveplot" in args:
-        return_plots = True
         save_fig = True
+        return_plots = True
     if "--graphdef" in args:
         graph_defs = get_graph_defs_from_file_paths(
             file_paths=file_paths,
@@ -93,7 +95,8 @@ def main(args: list[str]) -> None:
         handle_sequence_and_plot_output(
             audit_event_sequences_event_ids=audit_event_sequences_event_ids,
             output_path_prefix=output_path_prefix,
-            save_fig=save_fig
+            save_fig=save_fig,
+            valid=True
         )
 
         if "--invalid" in args:
@@ -357,31 +360,38 @@ def handle_plots(
             audit_event_sequence_plot.savefig(
                 f"{output_path_prefix}_sequence_{sequence_num}.png"
             )
-        audit_event_sequence_plot.show()
-        plt.show()
+            plt.close(audit_event_sequence_plot)
+        else:
+            audit_event_sequence_plot.show()
+            plt.show()
 
 
 def handle_sequence_and_plot_output(
     audit_event_sequences_event_ids: Iterable[
-        tuple[list[dict], list[str], Figure | None]
+        tuple[list[dict], list[str], Figure | None, str]
     ],
     output_path_prefix: str,
-    save_fig: bool
+    save_fig: bool,
+    valid: bool
 ) -> None:
     """Function to handle the saving of sequence files and output of plots
     from a given list of tuples with list of sequences, list of event ids and
     an optional :class:`Figure` instance
 
     :param audit_event_sequences_event_ids: list of tuples with list of
-    sequences, list of event ids and an optional :class:`Figure` instance
+    sequences, list of event ids and an optional :class:`Figure` instance and
+    job id
     :type audit_event_sequences_event_ids:
     :class:`Iterable`[`tuple`[`list`[`dict`], `list`[`str`], :class:`Figure`
-    |  `None`] ]
+    |  `None`], `str`]
     :param output_path_prefix: The output path prefix
     :type output_path_prefix: `str`
     :param save_fig: Boolean indicating whether to save a figure or not
     :type save_fig: `bool`
+    :param valid: Boolean indicating whether sequence is valid or not
+    :type valid: `bool`
     """
+    job_ids = []
     for i, audit_event_sequence_event_ids in enumerate(
         audit_event_sequences_event_ids
     ):
@@ -396,12 +406,24 @@ def handle_sequence_and_plot_output(
             save_fig=save_fig,
             sequence_num=i + 1
         )
+        job_ids.append(audit_event_sequence_event_ids[3])
+    # create job id validity dataframe
+    job_id_validity_df = pd.DataFrame(
+        list(zip(job_ids, [valid] * len(job_ids))),
+        columns=["JobId", "Validity"]
+    )
+    job_id_validity_df.to_csv(
+        output_path_prefix + "_jobid_validity.csv",
+        index=False
+    )
 
 
 def handle_categorised_audit_event_sequences(
     categorised_audit_event_sequences: dict[
         str,
-        tuple[tuple[Generator[tuple[list[dict], list[str]], Any, None], bool]]
+        tuple[tuple[Generator[tuple[
+            list[dict], list[str], plt.Figure | None, str
+        ], Any, None], bool]]
     ],
     output_path_prefix: str,
     save_fig: bool = False
@@ -418,7 +440,7 @@ def handle_categorised_audit_event_sequences(
     respectively.
     :type categorised_audit_event_sequences: `dict`[`str`,
     `tuple`[:class:`Generator`[`tuple`[`list`[`dict`],
-    `list`[`str`]]], `bool`]]
+    `list`[`str`], `plt`.`Figure` | `None`, `str`]], `bool`]]
     :param output_path_prefix: The current prefix for outputting file
     :type output_path_prefix: `str`
     :param save_fig: Boolean indicating whether to save figures or not,
@@ -434,7 +456,8 @@ def handle_categorised_audit_event_sequences(
         handle_sequence_and_plot_output(
             data[0],
             output_path_prefix_category,
-            save_fig=save_fig
+            save_fig=save_fig,
+            valid=data[1]
         )
 
 
