@@ -638,7 +638,7 @@ class GraphSolution:
         start_time: Optional[datetime.datetime] = None,
         job_id: Optional[str] = None,
         return_plot: bool = False
-    ) -> tuple[list[dict], list[str], plt.Figure | None]:
+    ) -> tuple[list[dict], list[str], plt.Figure | None, str]:
         """Method to create the audit event jsons for the instance. Updates
         the event_templateid's for each :class:`EventSolution` first and
         uses a topological sort (Kahn's algotrithm) to order the events.
@@ -671,8 +671,9 @@ class GraphSolution:
         * a list of the audit event jsons
         * a list of the event template ids
         * A figure object of topologically sorted graph or `None`
+        * The job id
         :rtype: `tuple`[`list`[`dict`], `list`[`str`], :class:`plt.Figure` |
-        `None`]
+        `None`, str]
         """
         self.update_events_event_template_id(is_template)
         ordered_events = self.get_topologically_sorted_event_sequence(
@@ -680,7 +681,8 @@ class GraphSolution:
         )
         (
             audit_event_sequence,
-            audit_event_template_ids
+            audit_event_template_ids,
+            job_id
         ) = self.get_audit_event_lists(
             events=ordered_events,
             is_template=is_template,
@@ -695,7 +697,7 @@ class GraphSolution:
                 ordered_events
             )
 
-        return audit_event_sequence, audit_event_template_ids, fig
+        return audit_event_sequence, audit_event_template_ids, fig, job_id
 
     def update_events_event_template_id(
         self,
@@ -786,7 +788,7 @@ class GraphSolution:
         job_id: Optional[str] = None,
         start_time: Optional[datetime.datetime] = None,
         missing_events: list["EventSolution"] = None
-    ) -> tuple[list[dict], list[str]]:
+    ) -> tuple[list[dict], list[str], str]:
         """Method to generate a sequence of audit event jsons from a sequence
         of :class:`EventSolution` along with a timestamp that is 1 second
         after the previous event in the sequence. Also generates a list of the
@@ -808,8 +810,9 @@ class GraphSolution:
         the audit events, defaults to `None`
         :type start_time: :class:`Optional`[:class:`datetime.datetime`],
         :return: Returns a tuple with the first entry the list of audit event
-        jsons and the second entry the list of unique eventId templates
-        :rtype: `tuple`[`list`[`dict`], `list`[`str`]]
+        jsons, the second entry the list of unique eventId templates and third
+        the job id
+        :rtype: `tuple`[`list`[`dict`], `list`[`str`], str]
         """
         if missing_events is None:
             missing_events = []
@@ -838,7 +841,7 @@ class GraphSolution:
             # update time to 1 second after previous event
             event_time += datetime.timedelta(seconds=1)
 
-        return audit_event_sequence, audit_event_template_ids
+        return audit_event_sequence, audit_event_template_ids, job_id
 
     @staticmethod
     def get_sequence_plot(
@@ -994,7 +997,7 @@ def get_audit_event_jsons_and_templates(
     is_template: bool = True,
     job_name: str = "default_job_name",
     return_plots=False
-) -> Generator[tuple[list[dict], list[str], plt.Figure | None]]:
+) -> Generator[tuple[list[dict], list[str], plt.Figure | None, str]]:
     """Function create a list of audit event sequence and audit eventId
     template pairs for a list of :class:`GraphSolution`'s
 
@@ -1011,10 +1014,10 @@ def get_audit_event_jsons_and_templates(
     topologically sorted graphs should be returned or not, defaults to
     `False`
     :type return_plot: `bool`, optional
-    :return: Returns the list of audit event sequence and audit eventId
-    template pairs
+    :return: Returns the list of audit event sequence, audit eventIds,
+    figure object and job id
     :rtype: :class:`Generator`[`tuple`[`list`[`dict`], `list`[`str`],
-    :class:`plt.Figure` | `None`]]
+    :class:`plt.Figure` | `None`, `str`]]
     """
     for graph_solution in graph_solutions:
         yield graph_solution.create_audit_event_jsons(
@@ -1062,7 +1065,7 @@ def get_categorised_audit_event_jsons(
     the category holds valid or invalid :class:`GraphSolution` sequences,
     respectively.
     :rtype: `dict`[`str`, `tuple`[:class:`Generator`[`tuple`[`list`[`dict`],
-    `list`[`str`]]], `bool`]]
+    `list`[`str`], `plt.Figure` | `None, `str`]], `bool`]]
     """
     return {
         category: (get_audit_event_jsons_and_templates(

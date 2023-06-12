@@ -2705,6 +2705,47 @@ class TestGraphSolutionGenerateAuditEvents:
             assert ordered_event == event
 
     @staticmethod
+    def test_get_audit_event_lists_template_job_id_template(
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests :class:`GraphSolution`.`get_audit_event_lists` when
+        `is_template` is set to `True` but a job_id is provided
+
+        :param graph_simple: Fixture providing a simple :class:`GraphSolution`
+        sequence
+        :type graph_simple: :class:`GraphSolution`
+        """
+        graph_simple.update_events_event_template_id(
+            is_template=True,
+        )
+        audit_event_data = GraphSolution.get_audit_event_lists(
+            events=graph_simple.events.values(),
+            job_id="test_job"
+        )
+        assert audit_event_data[2] == "test_job"
+
+    @staticmethod
+    def test_get_audit_event_lists_template_job_id_not_template(
+        graph_simple: GraphSolution
+    ) -> None:
+        """Tests :class:`GraphSolution`.`get_audit_event_lists` when
+        `is_template` is set to `False` but a job_id is provided
+
+        :param graph_simple: Fixture providing a simple :class:`GraphSolution`
+        sequence
+        :type graph_simple: :class:`GraphSolution`
+        """
+        graph_simple.update_events_event_template_id(
+            is_template=False,
+        )
+        audit_event_data = GraphSolution.get_audit_event_lists(
+            events=graph_simple.events.values(),
+            job_id="test_job",
+            is_template=False
+        )
+        assert audit_event_data[2] == "test_job"
+
+    @staticmethod
     def test_get_audit_event_lists_template(
         graph_simple: GraphSolution
     ) -> None:

@@ -109,15 +109,20 @@ def create_invalid_missing_edge_sols_from_event(
 def create_merge_invalid_stacked_solutions_from_valid_graph_sols(
     valid_graph_solutions: Iterable[GraphSolution],
     job_name: str = "default_job_name"
-) -> Generator[list[dict], Any, None]:
+) -> Generator[tuple[list[dict], list[str], None, str], Any, None]:
     """Method to create and merge stacked invalid solutions
 
     :param valid_graph_solutions: Iterable of valid :class:`GraphSolution`'s
     :type valid_graph_solutions: :class:`Iterable`[:class:`GraphSolution`]
     :param job_name: The name of the job, defaults to "default_job_name"
     :type job_name: `str`, optional
-    :yield: Yields a list of audit event jsons
-    :rtype: :class:`Generator`[`list`[`dict`], `Any`, `None`]
+    :yield: Yields a tuple with
+    * list of audit event jsons
+    * list of event ids
+    * `None` place-holder for figure object
+    * job id
+    :rtype: :class:`Generator`[`tuple`[`list`[`dict`], `list`[`str`], `None`,
+    `str`], `Any`, `None`, `str`]
     """
     for stacked_combination in (
         create_invalid_stacked_valid_solutions_from_valid_graph_sols(
@@ -152,7 +157,7 @@ def create_invalid_stacked_valid_solutions_from_valid_graph_sols(
 def merge_stacked_graph_sols_audit_events(
     graph_sols: Iterable[GraphSolution],
     job_name: str = "default_job_name"
-) -> tuple[list[dict], list[str], None]:
+) -> tuple[list[dict], list[str], None, str]:
     """Method to merge stacked :class:`GraphSolution`'s audit events. Flattens
     by row major order.
 
@@ -168,7 +173,7 @@ def merge_stacked_graph_sols_audit_events(
     :type job_name: `str`, optional
     :return: Returns the merged list of jsons along with template ids and
     `None`
-    :rtype: `tuple`[`list`[`dict`], `list`[`str`], `None`]
+    :rtype: `tuple`[`list`[`dict`], `list`[`str`], `None`, `str`]
     """
     start_time = datetime.datetime.now()
     audit_jsons_to_be_stacked = []
@@ -179,7 +184,7 @@ def merge_stacked_graph_sols_audit_events(
     # update maximum length of all audit json lists
     job_id = str(uuid.uuid4())
     for graph_sol in graph_sols:
-        audit_event_jsons, event_template_ids, _ = (
+        audit_event_jsons, event_template_ids, _, _ = (
             graph_sol.create_audit_event_jsons(
                 is_template=False,
                 job_name=job_name,
@@ -199,7 +204,7 @@ def merge_stacked_graph_sols_audit_events(
         for j, audit_jsons in enumerate(audit_jsons_to_be_stacked)
         if i < lengths[j]
     ]
-    return audit_jsons_stacked, event_template_ids, None
+    return audit_jsons_stacked, event_template_ids, None, job_id
 
 
 def create_invalid_linked_ghost_event_sols_from_valid_sols(
