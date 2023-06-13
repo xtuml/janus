@@ -273,7 +273,7 @@ def handle_sequence_and_plot_output(
     # create job id validity dataframe
     job_id_validity_df = pd.DataFrame(
         list(zip(
-            file_names
+            file_names,
             [job_name_category_valid[0]] * len(job_ids),
             [job_name_category_valid[1]] * len(job_ids),
             [job_name_category_valid[2]] * len(job_ids),
