@@ -174,7 +174,7 @@ def save_sequence_files(
     audit_event_sequence_json: list[dict],
     output_path_prefix: str,
     sequence_num: int
-) -> None:
+) -> str:
     """Function to save sequence files
 
     :param audit_event_sequence_json: List of dictionaries of an audit event
@@ -184,13 +184,18 @@ def save_sequence_files(
     :type output_path_prefix: `str`
     :param sequence_num: The number of the sequence
     :type sequence_num: `int`
+    :return: Returns file name
+    :rtype: `str`
     """
+    file_path = f"{output_path_prefix}_sequence_{sequence_num}.json"
     with open(
-        f"{output_path_prefix}_sequence_{sequence_num}.json",
+        file_path,
         'w',
         encoding="utf8"
     ) as file:
         json.dump(audit_event_sequence_json, file, indent=4)
+    file_name = os.path.split(file_path)[1]
+    return file_name
 
 
 def handle_plots(
@@ -248,10 +253,11 @@ def handle_sequence_and_plot_output(
     :type job_name_category_valid: `tuple`[`str, `str`, `bool`]
     """
     job_ids = []
+    file_names = []
     for i, audit_event_sequence_event_ids in enumerate(
         audit_event_sequences_event_ids
     ):
-        save_sequence_files(
+        file_name = save_sequence_files(
             audit_event_sequence_json=audit_event_sequence_event_ids[0],
             output_path_prefix=output_path_prefix,
             sequence_num=i + 1
@@ -263,15 +269,17 @@ def handle_sequence_and_plot_output(
             sequence_num=i + 1
         )
         job_ids.append(audit_event_sequence_event_ids[3])
+        file_names.append(file_name)
     # create job id validity dataframe
     job_id_validity_df = pd.DataFrame(
         list(zip(
+            file_names
             [job_name_category_valid[0]] * len(job_ids),
             [job_name_category_valid[1]] * len(job_ids),
             [job_name_category_valid[2]] * len(job_ids),
             job_ids
         )),
-        columns=["JobName", "Category", "Validity", "JobId"]
+        columns=["FileName", "JobName", "Category", "Validity", "JobId"]
     )
     return job_id_validity_df
 
