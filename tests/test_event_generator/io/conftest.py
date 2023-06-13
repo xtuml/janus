@@ -1,5 +1,11 @@
 from typing import Literal
 import pytest
+from tests.test_event_generator.solutions.conftest import (  # noqa: F401
+    graph_simple,
+    event_solution,
+    prev_event_solution,
+    post_event_solution
+)
 
 
 @pytest.fixture
