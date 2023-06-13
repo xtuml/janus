@@ -108,7 +108,8 @@ def create_invalid_missing_edge_sols_from_event(
 
 def create_merge_invalid_stacked_solutions_from_valid_graph_sols(
     valid_graph_solutions: Iterable[GraphSolution],
-    job_name: str = "default_job_name"
+    job_name: str = "default_job_name",
+    is_template: bool = False
 ) -> Generator[tuple[list[dict], list[str], None, str], Any, None]:
     """Method to create and merge stacked invalid solutions
 
@@ -116,6 +117,10 @@ def create_merge_invalid_stacked_solutions_from_valid_graph_sols(
     :type valid_graph_solutions: :class:`Iterable`[:class:`GraphSolution`]
     :param job_name: The name of the job, defaults to "default_job_name"
     :type job_name: `str`, optional
+    :param is_template: Boolean indicating if job is a template
+    job or unique ids should be provided for events and the job,
+    defaults to `False`
+    :type is_template: `bool`, optional
     :yield: Yields a tuple with
     * list of audit event jsons
     * list of event ids
@@ -131,7 +136,8 @@ def create_merge_invalid_stacked_solutions_from_valid_graph_sols(
     ):
         yield merge_stacked_graph_sols_audit_events(
             graph_sols=stacked_combination,
-            job_name=job_name
+            job_name=job_name,
+            is_template=is_template
         )
 
 
@@ -156,7 +162,8 @@ def create_invalid_stacked_valid_solutions_from_valid_graph_sols(
 
 def merge_stacked_graph_sols_audit_events(
     graph_sols: Iterable[GraphSolution],
-    job_name: str = "default_job_name"
+    job_name: str = "default_job_name",
+    is_template: bool = False
 ) -> tuple[list[dict], list[str], None, str]:
     """Method to merge stacked :class:`GraphSolution`'s audit events. Flattens
     by row major order.
@@ -166,7 +173,7 @@ def merge_stacked_graph_sols_audit_events(
     :type graph_sols: :class:`Iterable`[:class:`GraphSolution`]
     :param is_template: Boolean indicating if job is a template
     job or unique ids should be provided for events and the job,
-    defaults to `True`
+    defaults to `False`
     :type is_template: `bool`, optional
     :param job_name: The job definition name, defaults to
     "default_job_name"
@@ -182,11 +189,14 @@ def merge_stacked_graph_sols_audit_events(
     max_len = 0
     # get audit event jsons for each graph solution and save lengths and
     # update maximum length of all audit json lists
-    job_id = str(uuid.uuid4())
+    if is_template:
+        job_id = "jobID"
+    else:
+        job_id = str(uuid.uuid4())
     for graph_sol in graph_sols:
         audit_event_jsons, event_template_ids, _, _ = (
             graph_sol.create_audit_event_jsons(
-                is_template=False,
+                is_template=is_template,
                 job_name=job_name,
                 start_time=start_time,
                 job_id=job_id

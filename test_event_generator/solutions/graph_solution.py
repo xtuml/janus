@@ -1035,7 +1035,13 @@ def get_categorised_audit_event_jsons(
     is_template: bool = True,
     job_name: str = "default_job_name",
     return_plots: bool = False
-) -> dict[str, tuple[Generator[tuple[list[dict], list[str]]], bool]]:
+) -> dict[
+    str,
+    tuple[
+        Generator[tuple[list[dict], list[str], plt.Figure | None, str]],
+        bool
+    ]
+]:
     """Method to get categorised audit event jsons from a dictionary of a list
     of `:class:GraphSolution`'s and valid/invalid boolean pair
 

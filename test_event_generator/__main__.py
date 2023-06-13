@@ -8,15 +8,8 @@ from typing import Optional, Iterable, Generator, Any
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
-from test_event_generator.graph import Graph
-from test_event_generator.solutions import (
-    get_audit_event_jsons_and_templates,
-    GraphSolution,
-    create_invalid_graph_solutions_from_valid_graph_solutions,
-    get_categorised_audit_event_jsons,
-    create_merge_invalid_stacked_solutions_from_valid_graph_sols
-)
-from test_event_generator.io.parse_puml import get_graph_defs_from_puml
+from test_event_generator.io.run import get_graph_def_test_events
+from test_event_generator import puml_file_to_test_events
 
 
 def main(args: list[str]) -> None:
@@ -46,129 +39,51 @@ def main(args: list[str]) -> None:
         return
     num_loops = 2
     num_branches = 2
-    out_sub_dir = None
-    job_name = "default_job_name"
-    return_plots = False
+    out_dir = "./"
     save_fig = False
+    invalid = False
     # check command line options
     if "--numloops" in args:
         num_loops = int(get_arg_value(args, "--numloops"))
     if "--numbranches" in args:
         num_branches = int(get_arg_value(args, "--numbranches"))
-    if "--outsubdir" in args:
-        out_sub_dir = get_arg_value(args, "--outsubdir")
-    if "--jobname" in args:
-        job_name = get_arg_value(args, "--jobname")
-    if "--plot" in args:
-        return_plots = True
+    if "--outdir" in args:
+        out_dir = get_arg_value(args, "--outdir")
     if "--saveplot" in args:
         save_fig = True
-        return_plots = True
-    if "--graphdef" in args:
-        graph_defs = get_graph_defs_from_file_paths(
-            file_paths=file_paths,
-            out_sub_dir=out_sub_dir
-        )
-    elif "--puml" in args:
-        graph_defs = {}
-        for file_path in file_paths:
-            graph_defs |= get_graph_defs_from_puml_file(
-                file_path,
-                out_sub_dir
-            )
-
-    for output_path_prefix, graph_def in graph_defs.items():
-        graph = Graph()
-        graph.parse_graph_def(graph_def)
-        graph_sols = get_graph_sols_for_graph_def(
-            graph=graph,
-            num_loops=num_loops,
-            num_branches=num_branches
-        )
-        audit_event_sequences_event_ids = get_audit_event_jsons_and_templates(
-            graph_sols,
-            is_template=False,
-            job_name=job_name,
-            return_plots=return_plots
-        )
-
-        handle_sequence_and_plot_output(
-            audit_event_sequences_event_ids=audit_event_sequences_event_ids,
-            output_path_prefix=output_path_prefix,
-            save_fig=save_fig,
-            valid=True
-        )
-
-        if "--invalid" in args:
-            handle_invalid_sols(
-                graph_sols=graph_sols,
-                graph=graph,
-                output_path_prefix=output_path_prefix,
-                job_name=job_name,
-                save_fig=save_fig,
-                return_plots=return_plots
-            )
-
-
-def handle_invalid_sols(
-    graph_sols: Iterable[GraphSolution],
-    graph: Graph,
-    output_path_prefix: str,
-    job_name: str,
-    save_fig: bool,
-    return_plots: bool
-) -> None:
-    """Method to handle generating invalid audit event sequences
-
-    :param graph_sols: Iterable of :class:`GraphSolution`'s from which to make
-    invalid sequences
-    :type graph_sols: :class:`Iterable`[:class:`GraphSolution`]
-    :param graph: The pre-solved :class:`Graph` from which to generate invalid
-    constraint violation solutions
-    :type graph: :class:`Graph`
-    :param output_path_prefix: The output path prefix used to help build the
-    output paths
-    :type output_path_prefix: `str`
-    :param job_name: The name of the job
-    :type job_name: `str`
-    :param save_fig: Boolean indicating whether to save figures
-    :type save_fig: `bool`
-    :param return_plots: Boolean indicating whether to return plots
-    :type return_plots: `bool`
-    """
-    categorised_invalid_graph_sols_from_graph_sols = (
-        create_invalid_graph_solutions_from_valid_graph_solutions(
-            graph_sols
-        )
-    )
-    # get invalid sols from graph
-    categorised_invalid_graph_sols_from_graph = (
-        graph.get_all_invalid_constraint_breaks()
-    )
-    categorised_invalid_graph_sols = {
-        **categorised_invalid_graph_sols_from_graph_sols,
-        **categorised_invalid_graph_sols_from_graph
+    if "--invalid" in args:
+        invalid = True
+    options = {
+        "is_template": False,
+        "return_plots": save_fig,
+        "num_loops": num_loops,
+        "num_branches": num_branches,
+        "invalid": invalid
     }
-    # get dict of generated invalid audit event sequences
-    categorised_invalid_audit_event_sequences = (
-        get_categorised_audit_event_jsons(
-            categorised_invalid_graph_sols,
-            is_template=False,
-            job_name=job_name,
-            return_plots=return_plots
+    if "--graphdef" in args:
+        jobs_test_events = {}
+        graph_defs = get_graph_defs_from_file_paths(
+            file_paths
         )
-    )
-    # add stacked solutions separately
-    categorised_invalid_audit_event_sequences["StackedSolutions"] = (
-        create_merge_invalid_stacked_solutions_from_valid_graph_sols(
-            graph_sols,
-            job_name=job_name
-        ),
-        False
-    )
-    handle_categorised_audit_event_sequences(
-        categorised_invalid_audit_event_sequences,
-        output_path_prefix=output_path_prefix,
+        for out_path_prefix, graph_def in graph_defs:
+            job_def_name = os.path.split(out_path_prefix)[1]
+            jobs_test_events[job_def_name] = get_graph_def_test_events(
+                graph_def,
+                job_def_name,
+                **options
+            )
+
+    elif "--puml" in args:
+        jobs_test_events = {}
+        for file_path in file_paths:
+            jobs_test_events |= puml_file_to_test_events(
+                file_path,
+                **options
+            )
+
+    handle_jobs_categorised_audit_event_sequences(
+        jobs_test_events,
+        output_path=out_dir,
         save_fig=save_fig
     )
 
@@ -188,37 +103,6 @@ def get_arg_value(
     """
     index = args.index(arg)
     return args[index + 1]
-
-
-def get_graph_defs_from_puml_file(
-    puml_file_path: str,
-    out_sub_dir: Optional[str] = None
-) -> dict:
-    """Method to get graph defs from a single puml file
-
-    :param puml_file_path: The file path of the puml file
-    :type puml_file_path: `str`
-    :param out_sub_dir: An optional out sub directory, defaults to `None`
-    :type out_sub_dir: :class:`Optional`[`str`], optional
-    :return: Dictionary of graph defs with output path prefix as keys
-    :rtype: `dict`
-    """
-    # get output path prefix
-    output_path_prefix = get_output_path_prefix(
-        puml_file_path,
-        out_sub_dir
-    )
-    output_path_prefix = os.path.split(output_path_prefix)[0]
-    # load puml file
-    with open(puml_file_path, 'r', encoding="utf8") as file:
-        puml_file = file.read()
-    # get graph_defs
-    graph_defs = get_graph_defs_from_puml(puml_file)
-    graph_defs = {
-        os.path.join(output_path_prefix, name): graph_def
-        for name, graph_def in graph_defs.items()
-    }
-    return graph_defs
 
 
 def get_graph_defs_from_file_paths(
@@ -286,32 +170,6 @@ def get_output_path_prefix(
     return output_path_prefix
 
 
-def get_graph_sols_for_graph_def(
-    graph: Graph,
-    num_loops: int,
-    num_branches: int
-) -> list[GraphSolution]:
-    """Function to get list of :class:`GraphSolution` from an input graph_def
-
-    :param graph_def: Standardised graph definition
-    :type graph_def: `dict`
-    :param num_loops: Number of loops in expansion
-    :type num_loops: `int`
-    :param num_branches: Number of branches in expansion
-    :type num_branches: `int`
-    :return: Returns a list of the
-    :class:`GraphSolution` combinations
-    instance that generated them
-    :rtype: `list`[:class:`GraphSolution`]
-    """
-    graph.solve()
-    graph_sols = graph.get_all_combined_graph_solutions(
-        num_loops=num_loops,
-        num_branches=num_branches
-    )
-    return graph_sols
-
-
 def save_sequence_files(
     audit_event_sequence_json: list[dict],
     output_path_prefix: str,
@@ -361,9 +219,6 @@ def handle_plots(
                 f"{output_path_prefix}_sequence_{sequence_num}.png"
             )
             plt.close(audit_event_sequence_plot)
-        else:
-            audit_event_sequence_plot.show()
-            plt.show()
 
 
 def handle_sequence_and_plot_output(
@@ -372,7 +227,7 @@ def handle_sequence_and_plot_output(
     ],
     output_path_prefix: str,
     save_fig: bool,
-    valid: bool
+    job_name_category_valid: tuple[str, str, bool]
 ) -> None:
     """Function to handle the saving of sequence files and output of plots
     from a given list of tuples with list of sequences, list of event ids and
@@ -388,8 +243,9 @@ def handle_sequence_and_plot_output(
     :type output_path_prefix: `str`
     :param save_fig: Boolean indicating whether to save a figure or not
     :type save_fig: `bool`
-    :param valid: Boolean indicating whether sequence is valid or not
-    :type valid: `bool`
+    :param job_name_category_valid: Tuple containing job name, category and
+    validity
+    :type job_name_category_valid: `tuple`[`str, `str`, `bool`]
     """
     job_ids = []
     for i, audit_event_sequence_event_ids in enumerate(
@@ -409,94 +265,90 @@ def handle_sequence_and_plot_output(
         job_ids.append(audit_event_sequence_event_ids[3])
     # create job id validity dataframe
     job_id_validity_df = pd.DataFrame(
-        list(zip(job_ids, [valid] * len(job_ids))),
-        columns=["JobId", "Validity"]
+        list(zip(
+            [job_name_category_valid[0]] * len(job_ids),
+            [job_name_category_valid[1]] * len(job_ids),
+            [job_name_category_valid[2]] * len(job_ids),
+            job_ids
+        )),
+        columns=["JobName", "Category", "Validity", "JobId"]
     )
-    job_id_validity_df.to_csv(
-        output_path_prefix + "_jobid_validity.csv",
-        index=False
-    )
+    return job_id_validity_df
 
 
-def handle_categorised_audit_event_sequences(
+def handle_jobs_categorised_audit_event_sequences(
+    jobs_categorised_audit_event_sequences: dict[str, dict],
+    output_path: str,
+    save_fig: bool = False
+):
+    """Method to handle output from generated job specific categorised test
+    event sequences
+
+    :param jobs_categorised_audit_event_sequences: Dictionary with keys as job
+    names and values a categorised test event sequences
+    :type jobs_categorised_audit_event_sequences: `dict`[`str`, `dict`]
+    :param output_path: The path of the output directory
+    :type output_path: `str`
+    :param save_fig: Boolean indicating to save figures, defaults to `False`
+    :type save_fig: `bool`, optional
+    """
+    for job_name, categorised_audit_event_sequences in (
+        jobs_categorised_audit_event_sequences.items()
+    ):
+        handle_job_categorised_audit_event_sequences(
+            categorised_audit_event_sequences,
+            output_path,
+            job_name,
+            save_fig
+        )
+
+
+def handle_job_categorised_audit_event_sequences(
     categorised_audit_event_sequences: dict[
         str,
         tuple[tuple[Generator[tuple[
             list[dict], list[str], plt.Figure | None, str
         ], Any, None], bool]]
     ],
-    output_path_prefix: str,
-    save_fig: bool = False
-) -> None:
-    """Method to handle categorised audit event sequences saving and plotting
+    output_path: str,
+    job_name: str,
+    save_fig: bool = False,
+):
+    """Method to handle the output of categorised test event sequences
 
-    :param categorised_audit_event_sequences: a dictionary with key as
-    category and
-    values a `tuple` with first entry a Generator of `tuple`'s with first
-    entry the
-    list of audit event jsons and second entry a list of the audit event ids.
-    The second entry in the highest level tuple is a boolean indicating whether
-    the category holds valid or invalid :class:`GraphSolution` sequences,
-    respectively.
-    :type categorised_audit_event_sequences: `dict`[`str`,
-    `tuple`[:class:`Generator`[`tuple`[`list`[`dict`],
-    `list`[`str`], `plt`.`Figure` | `None`, `str`]], `bool`]]
-    :param output_path_prefix: The current prefix for outputting file
-    :type output_path_prefix: `str`
-    :param save_fig: Boolean indicating whether to save figures or not,
-    defaults to `False`
+    :param categorised_audit_event_sequences: Categorised test event sequences
+    :type categorised_audit_event_sequences: `dict`[ `str`,
+    `tuple`[`tuple`[:class:`Generator`[`tuple`[ `list`[`dict`], `list`[`str`],
+    :class:`plt.Figure`  |  `None`,
+    `str` ], `Any`, `None`], `bool`]] ]
+    :param output_path: The path of the output directory
+    :type output_path: `str`
+    :param job_name: The name of the job
+    :type job_name: `str`
+    :param save_fig: Boolean indicating to save figures, defaults to `False`
     :type save_fig: `bool`, optional
     """
+    validity_dfs = []
     for category, data in categorised_audit_event_sequences.items():
-        output_path_prefix_category = make_categorised_output_directory(
-            output_path_prefix,
-            data[1],
-            category
+        output_path_prefix = os.path.join(
+            output_path,
+            "_".join((job_name, category, "valid" if data[1] else "invalid"))
         )
-        handle_sequence_and_plot_output(
+        validity_df = handle_sequence_and_plot_output(
             data[0],
-            output_path_prefix_category,
             save_fig=save_fig,
-            valid=data[1]
+            job_name_category_valid=(job_name, category, data[1]),
+            output_path_prefix=output_path_prefix
         )
-
-
-def make_categorised_output_directory(
-    output_path_prefix: str,
-    valid: bool,
-    category: str
-) -> str:
-    """Method to create categorised output directory (if not already there)
-    and return the desired
-    path prefix for category and valid solution
-
-    :param output_path_prefix: the current output path prefix
-    :type output_path_prefix: `str`
-    :param valid: Boolean indicating if the solution is valid or invalid
-    :type valid: `bool`
-    :param category: The category the solutions are in
-    :type category: `str`
-    :return: Returns a prefix path for saving files to
-    :rtype: `str`
-    """
-    path_split = os.path.split(output_path_prefix)
-    out_directory = path_split[0]
-    for folder in [
-        "valid" if valid else "invalid",
-        category
-    ]:
-        out_directory = os.path.join(
-            out_directory,
-            folder
-        )
-        # if the directory doesn't exist make it
-        if not os.path.isdir(out_directory):
-            os.mkdir(out_directory)
-    output_path_prefix = os.path.join(
-        out_directory,
-        path_split[1]
+        validity_dfs.append(validity_df)
+    job_validity_df = pd.concat(validity_dfs, ignore_index=True)
+    job_validity_df.to_csv(
+        os.path.join(
+            output_path,
+            f"{job_name}_validity_df.csv"
+        ),
+        index=False
     )
-    return output_path_prefix
 
 
 if __name__ == "__main__":
