@@ -214,13 +214,6 @@ def expected_solutions_and_to_or() -> list[dict[str, int]]:
     return [
         {
             "Event_A": 1,
-            "Event_B": 1,
-            "Event_C": 0,
-            "Event_D": 0,
-            "Event_E": 0,
-        },
-        {
-            "Event_A": 1,
             "Event_B": 0,
             "Event_C": 1,
             "Event_D": 0,
@@ -230,13 +223,6 @@ def expected_solutions_and_to_or() -> list[dict[str, int]]:
             "Event_A": 1,
             "Event_B": 0,
             "Event_C": 0,
-            "Event_D": 1,
-            "Event_E": 1,
-        },
-        {
-            "Event_A": 1,
-            "Event_B": 0,
-            "Event_C": 1,
             "Event_D": 1,
             "Event_E": 1,
         },
@@ -253,20 +239,6 @@ def expected_solutions_xor_to_or() -> list[dict[str, int]]:
     :rtype: `list`[`dict`[`str`, `int`]]
     """
     return [
-        {
-            "Event_A": 1,
-            "Event_B": 1,
-            "Event_C": 0,
-            "Event_D": 0,
-            "Event_E": 0,
-        },
-        {
-            "Event_A": 1,
-            "Event_B": 0,
-            "Event_C": 1,
-            "Event_D": 1,
-            "Event_E": 1,
-        },
         {
             "Event_A": 1,
             "Event_B": 1,
@@ -346,13 +318,6 @@ def expected_edge_solutions_and_to_or() -> list[dict[str, int]]:
     """
     return [
         {
-            "edge_A_B": 1,
-            "edge_A_C": 0,
-            "edge_A_D": 0,
-            "edge_C_E": 0,
-            "edge_D_E": 0
-        },
-        {
             "edge_A_B": 0,
             "edge_A_C": 1,
             "edge_A_D": 0,
@@ -364,13 +329,6 @@ def expected_edge_solutions_and_to_or() -> list[dict[str, int]]:
             "edge_A_C": 0,
             "edge_A_D": 1,
             "edge_C_E": 0,
-            "edge_D_E": 1
-        },
-        {
-            "edge_A_B": 0,
-            "edge_A_C": 1,
-            "edge_A_D": 1,
-            "edge_C_E": 1,
             "edge_D_E": 1
         },
     ]

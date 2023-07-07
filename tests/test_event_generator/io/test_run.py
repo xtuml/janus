@@ -16,7 +16,7 @@ from test_event_generator.io.run import (
 
 def test_get_categorised_valid_test_sequences_options_false(
     graph_simple: GraphSolution
-):
+) -> None:
     """Tests the method `get_categorised_valid_test_sequences` when the
     options have "is_template" set to False
 
@@ -45,7 +45,7 @@ def test_get_categorised_valid_test_sequences_options_false(
 def check_valid_categorised_sols(
     categorised_valid_audit_event_sequences: dict,
     is_template: bool
-):
+) -> None:
     """Method to check all valid categorised test event sequences
 
     :param categorised_valid_audit_event_sequences: Dictionary containing
@@ -67,7 +67,7 @@ def check_valid_categorised_sols(
 def check_output_event_sequences(
     audit_event_sequence_tuples: Iterable[tuple],
     is_template: bool
-):
+) -> None:
     """Method to audit event sequence tuples have the correct structure
 
     :param audit_event_sequence_tuples: Iterable of tuples containing:
@@ -98,7 +98,7 @@ def check_output_event_sequences(
 
 def test_get_categorised_valid_test_sequences_options_true(
     graph_simple: GraphSolution
-):
+) -> None:
     """Tests the method `get_categorised_valid_test_sequences` when the
     options have "is_template" set to True
 
@@ -126,7 +126,7 @@ def test_get_categorised_valid_test_sequences_options_true(
 
 def test_get_categorised_invalid_test_sequences_false(
     parsed_graph: Graph
-):
+) -> None:
     """Tests the method `get_categorised_invalid_test_sequences` when the
     options have "is_template" set to False
 
@@ -160,7 +160,7 @@ def test_get_categorised_invalid_test_sequences_false(
 def check_invalid_categorised_sols(
     categorised_invalid_audit_event_sequences: dict,
     is_template: bool
-):
+) -> None:
     """Method to check all invalid categorised test event sequences
 
     :param categorised_invalid_test_event_sequences: Dictionary containing
@@ -187,7 +187,7 @@ def check_invalid_categorised_sols(
 
 def test_get_categorised_invalid_test_sequences_true(
     parsed_graph: Graph
-):
+) -> None:
     """Tests the method `get_categorised_invalid_test_sequences` when the
     options have "is_template" set to True
 
@@ -220,7 +220,7 @@ def test_get_categorised_invalid_test_sequences_true(
 
 def tests_get_graph_def_test_events(
     graph_def: dict[str, dict]
-):
+) -> None:
     """Tests the method `get_graph_def_test_events`
 
     :param graph_def: Standardised graph definition
@@ -247,7 +247,7 @@ def tests_get_graph_def_test_events(
 def check_all_categorised_sols(
     categorised_test_event_sequences: dict,
     is_template: bool
-):
+) -> None:
     """Method to check all categorised test event sequences
 
     :param categorised_test_event_sequences: Dictionary containing categorised
@@ -280,7 +280,7 @@ def check_all_categorised_sols(
 
 def test_puml_to_test_events(
     ANDFork_loop_puml: str
-):
+) -> None:
     """Tests the method `puml_to_test_events`
 
     :param ANDFork_loop_puml: Fixture providing a str representation of a puml
@@ -306,4 +306,98 @@ def test_puml_to_test_events(
     check_all_categorised_sols(
         categorised_test_event_sequences,
         False
+    )
+
+
+def test_puml_to_test_events_solution_limit(
+    bunched_xor_puml: str
+) -> None:
+    """Tests the method `puml_to_test_events` when there is a solution limit
+
+    :param ANDFork_loop_puml: Fixture providing a str representation of a puml
+    file
+    :type ANDFork_loop_puml: `str`
+    """
+    options = {
+        "is_template": False,
+        "return_plots": False,
+        "invalid": True,
+        "num_branches": 2,
+        "num_loops": 2,
+        "solution_limit": 1
+    }
+    jobs_categorised_test_event_sequences = puml_to_test_events(
+        bunched_xor_puml,
+        **options
+    )
+    assert len(jobs_categorised_test_event_sequences) == 1
+    assert "bunched_XOR_switch" in jobs_categorised_test_event_sequences
+    categorised_test_event_sequences = jobs_categorised_test_event_sequences[
+        "bunched_XOR_switch"
+    ]
+    # make sure valid only provides 1 solution
+    counter = 0
+    for _ in categorised_test_event_sequences["ValidSols"][0]:
+        counter += 1
+    assert counter == 1
+    # as we have only looked for one solution it is possible that the invalid
+    # constraint break has found that solutions and it was filtered out
+    counter = 0
+    for _ in categorised_test_event_sequences["XORConstraintBreaks"][0]:
+        counter += 1
+    assert counter == 1
+
+
+def test_puml_to_test_events_solution_limit_invalid_check(
+    ANDFork_loop_puml: str
+) -> None:
+    """Tests the method `puml_to_test_events` with a solution limit for
+    invalid solutions
+
+    :param ANDFork_loop_puml: Fixture providing a str representation of a puml
+    file
+    :type ANDFork_loop_puml: `str`
+    """
+    options = {
+        "is_template": False,
+        "return_plots": False,
+        "invalid": True,
+        "num_branches": 2,
+        "num_loops": 2,
+        "solution_limit": 1
+    }
+    jobs_categorised_test_event_sequences = puml_to_test_events(
+        ANDFork_loop_puml,
+        **options
+    )
+    categorised_test_event_sequences = jobs_categorised_test_event_sequences[
+        "ANDFork_loop_a"
+    ]
+    counter = 0
+    for _ in categorised_test_event_sequences["ANDConstraintBreaks"][0]:
+        counter += 1
+    assert counter == 1
+
+
+def test_puml_to_test_events_solution_max_sol_time(
+    ANDFork_loop_puml: str
+) -> None:
+    """Tests the method `puml_to_test_events` with a max solution time provided
+
+    :param ANDFork_loop_puml: Fixture providing a str representation of a puml
+    file
+    :type ANDFork_loop_puml: `str`
+    """
+    options = {
+        "is_template": False,
+        "return_plots": False,
+        "invalid": True,
+        "num_branches": 2,
+        "num_loops": 2,
+        "solution_limit": 1,
+        "max_sol_time": 10
+    }
+    puml_to_test_events(
+        ANDFork_loop_puml,
+        **options
     )

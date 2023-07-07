@@ -12,7 +12,7 @@ from ortools.sat.python.cp_model import CpModel, CpSolver, IntVar
 
 
 from test_event_generator.graph import Graph
-from test_event_generator.core.event import Event, LoopEvent
+from test_event_generator.core.event import Event, LoopEvent, BranchEvent
 from test_event_generator.core.edge import Edge
 from test_event_generator.core.group import ORGroup, XORGroup, ANDGroup, Group
 from test_event_generator.solutions import (
@@ -695,6 +695,39 @@ class TestSolve:
         """
         parsed_graph.solve()
         assert len(parsed_graph.solutions["Event"]) == 2
+
+    @staticmethod
+    def test_solve_num_sols_max_num_sols(
+        parsed_graph: Graph
+    ) -> None:
+        """Tests :class:`Graph`.`solve` when max number of sols has been set
+        and the :class:`Graph` should have two solutions but the limit is set
+        to 1
+
+        :param parsed_graph: Fixture providing a parsed :class:`Graph` with
+        two solutions
+        :type parsed_graph: :class:`Graph`
+        """
+        parsed_graph.solve(solution_limit=1)
+        assert len(parsed_graph.solutions["Event"]) == 1
+
+    @staticmethod
+    def test_solve_num_sols_max_num_sols_with_branch(
+        parsed_graph_with_branch: Graph
+    ) -> None:
+        """Tests :class:`Graph`.`solve` when max number of sols has been set
+        and the sub graph of a :class:`BranchEvent` should have 2 solutions
+        but the limit is set to 1
+
+
+        :param parsed_graph_with_branch: Fixture providing a :class:`Graph`
+        with a :class:`BranchEvent` with a subgraph with 2 solutions
+        :type parsed_graph_with_branch: :class:`Graph`
+        """
+        parsed_graph_with_branch.solve(solution_limit=1)
+        for event in parsed_graph_with_branch.events.values():
+            if isinstance(event, BranchEvent):
+                assert len(event.sub_graph.solutions["Event"]) == 1
 
     @staticmethod
     def test_solve_sols_correct(
@@ -2185,7 +2218,8 @@ class TestGraphGenerateInvalidSolutions:
     @staticmethod
     def test_replace_constraints_and_solve_invalid_graph_and(
         parsed_graph: Graph,
-        expected_solutions_and_to_or: list[dict[str, int]]
+        expected_solutions_and_to_or: list[dict[str, int]],
+        expected_edge_solutions: list[dict[str, int]]
     ) -> None:
         """Tests the method
         :class:`Graph`.`replace_constraints_and_solve_invalid_graph` with
@@ -2201,10 +2235,11 @@ class TestGraphGenerateInvalidSolutions:
         Graph.replace_constraints_and_solve_invalid_graph(
             invalid_graph=parsed_graph,
             group_type=ANDGroup,
-            replace_func=Graph.replace_and_constraint
+            replace_func=Graph.replace_and_constraint,
+            valid_edge_solutions=expected_edge_solutions
         )
         solutions_event = parsed_graph.solutions["Event"]
-        assert len(parsed_graph.solutions["Event"]) == 4
+        assert len(parsed_graph.solutions["Event"]) == 2
         sorted_solutions = sorted(
             solutions_event, key=lambda x: sum(
                 i * val
@@ -2222,7 +2257,8 @@ class TestGraphGenerateInvalidSolutions:
     @staticmethod
     def test_replace_constraints_and_solve_invalid_graph_xor(
         parsed_graph: Graph,
-        expected_solutions_xor_to_or: list[dict[str, int]]
+        expected_solutions_xor_to_or: list[dict[str, int]],
+        expected_edge_solutions: list[dict[str, int]]
     ) -> None:
         """Tests the method
         :class:`Graph`.`replace_constraints_and_solve_invalid_graph` with
@@ -2238,10 +2274,11 @@ class TestGraphGenerateInvalidSolutions:
         Graph.replace_constraints_and_solve_invalid_graph(
             invalid_graph=parsed_graph,
             group_type=XORGroup,
-            replace_func=Graph.replace_xor_constraint
+            replace_func=Graph.replace_xor_constraint,
+            valid_edge_solutions=expected_edge_solutions
         )
         solutions_event = parsed_graph.solutions["Event"]
-        assert len(parsed_graph.solutions["Event"]) == 3
+        assert len(parsed_graph.solutions["Event"]) == 1
         sorted_solutions = sorted(
             solutions_event, key=lambda x: sum(
                 i * val
@@ -2257,149 +2294,76 @@ class TestGraphGenerateInvalidSolutions:
                 assert event_sol == expected_event_sol
 
     @staticmethod
-    def test_extract_invalid_solution_indices(
-        expected_solutions: list[dict[int, str]],
-        expected_solutions_and_to_or: list[dict[int, str]]
+    def test_remove_solution_from_graph(
+        parsed_graph: Graph,
+        expected_edge_solutions: list[dict, str],
+        expected_solutions: list[dict, str]
     ) -> None:
-        """Tests the method :class:`Graph`.`extract_invalid_solution_indices`
+        """Tests :class:`Graph`.`remove_solution_from_graph`
 
-        :param expected_solutions: Fixture providing a list of expected valid
-        solutions for the test
-        :type expected_solutions: `list`[`dict`[`int`, `str`]]
-        :param expected_solutions_and_to_or: Fixture providing a list of
-        expected solutions when AND constraints have been replaced with OR
-        constraints
-        :type expected_solutions_and_to_or: `list`[`dict`[`int`, `str`]]
+        :param parsed_graph: Fixture providing a graph that has parsed a graph
+        definition
+        :type parsed_graph: :class:`Graph`
+        :param expected_edge_solutions: Fixture providing the expected edge
+        solutions
+        :type expected_edge_solutions: `list`[`dict`, `str`]
+        :param expected_solutions: Fixture providing the expected Event
+        solutions
+        :type expected_solutions: `list`[`dict`, `str`]
         """
-        invalid_indexes = Graph.extract_invalid_solution_indices(
-            invalid_solutions=expected_solutions_and_to_or,
-            valid_solutions=expected_solutions
+        parsed_graph.remove_solution_from_graph(
+            expected_edge_solutions[0]
         )
-        assert len(invalid_indexes) == 2
-        for invalid_index, check_index in zip(
-            sorted(invalid_indexes), sorted([1, 2])
-        ):
-            assert invalid_index == check_index
-
-    @staticmethod
-    def check_invalid_filtered_solution(
-        filtered_solutions: list[dict[str, int]]
-    ) -> None:
-        """Helper function to check that the expected behaviour for invalid
-        filtered solutions is correct
-
-        :param filtered_solutions: List of filtered solutions
-        :type filtered_solutions: `list`[`dict`[`str`, `int`]]
-        """
-        assert len(filtered_solutions) == 2
-        expected_filtered_solutions = [
-            {
-                "Event_A": 1,
-                "Event_B": 0,
-                "Event_C": 1,
-                "Event_D": 0,
-                "Event_E": 1,
-            },
-            {
-                "Event_A": 1,
-                "Event_B": 0,
-                "Event_C": 0,
-                "Event_D": 1,
-                "Event_E": 1,
-            },
-        ]
-        filtered_solutions = sorted(
-            filtered_solutions,
-            key=lambda x: sum(
+        parsed_graph.solve()
+        solutions_event = parsed_graph.solutions["Event"]
+        assert len(solutions_event) == 1
+        sorted_solutions = sorted(
+            solutions_event, key=lambda x: sum(
                 i * val
                 for i, val in enumerate(x.values())
             )
         )
-        expected_filtered_solutions = sorted(
-            expected_filtered_solutions,
-            key=lambda x: sum(
-                i * val
-                for i, val in enumerate(x.values())
-            )
-        )
-        for filtered_sol, expected_sol in zip(
-            filtered_solutions, expected_filtered_solutions
+        for sorted_sol, expected_sol in zip(
+            sorted_solutions, expected_solutions[1:]
         ):
             for event_sol, expected_event_sol in zip(
-                filtered_sol.values(), expected_sol.values()
+                sorted_sol.values(), expected_sol.values()
             ):
                 assert event_sol == expected_event_sol
 
     @staticmethod
-    def test_filter_solutons_by_indices_array(
-        expected_solutions_and_to_or: list[dict[int, str]]
+    def test_remove_solutions_from_graph(
+        parsed_graph: Graph,
+        expected_edge_solutions: list[dict, str],
     ) -> None:
-        """Tests the method
-        :class:`Graph`.`filter_solutions_by_indices_iterable`
+        """Tests :class:`Graph`.`remove_solutions_from_graph`
 
-        :param expected_solutions_and_to_or: Fixture providing a list of
-        expected solutions when AND constraints have been replaced with OR
-        constraints
-        :type expected_solutions_and_to_or: `list`[`dict`[`int`, `str`]]
+        :param parsed_graph: Fixture providing a graph that has parsed a graph
+        definition
+        :type parsed_graph: :class:`Graph`
+        :param expected_edge_solutions: Fixture providing the expected edge
+        solutions
+        :type expected_edge_solutions: `list`[`dict`, `str`]
         """
-        filtered_solutions = Graph.filter_solutions_by_indices_iterable(
-            indices=[1, 2],
-            solutions={
-                "Event": expected_solutions_and_to_or
-            }
+        parsed_graph.remove_solutions_from_graph(
+            expected_edge_solutions
         )
-        TestGraphGenerateInvalidSolutions.check_invalid_filtered_solution(
-            filtered_solutions=filtered_solutions["Event"]
-        )
-
-    @staticmethod
-    def test_get_filtered_invalid_solutions(
-        expected_solutions: list[dict[int, str]],
-        expected_solutions_and_to_or: list[dict[int, str]]
-    ) -> None:
-        """Tests the method :class:`Graph`.`get_filtered_invalid_solutions`
-
-        :param expected_solutions: Fixture providing a list of expected valid
-        solutions for the test
-        :type expected_solutions: `list`[`dict`[`int`, `str`]]
-        :param expected_solutions_and_to_or: Fixture providing a list of
-        expected solutions when AND constraints have been replaced with OR
-        constraints
-        :type expected_solutions_and_to_or: `list`[`dict`[`int`, `str`]]
-        """
-        filtered_solutions = Graph.get_filtered_invalid_solutions(
-            invalid_solutions={
-                "Event": expected_solutions_and_to_or
-            },
-            valid_solutions={
-                "Event": expected_solutions
-            }
-        )
-        TestGraphGenerateInvalidSolutions.check_invalid_filtered_solution(
-            filtered_solutions=filtered_solutions["Event"]
-        )
+        parsed_graph.solve()
+        assert len(parsed_graph.solutions["Event"]) == 0
 
     @staticmethod
     def test_get_combined_invalid_graph_solutions_no_sub_graph_events(
-        expected_solutions: list[dict[str, int]],
         expected_solutions_and_to_or: list[dict[str, int]],
-        expected_edge_solutions: list[dict[str, int]],
         expected_edge_solutions_and_to_or: list[dict[str, int]],
         parsed_graph: Graph
     ) -> None:
         """Tests the method
         :class:`Graph`.`get_combined_invalid_graph_solutions`
 
-        :param expected_solutions: Fixture providing a list of expected valid
-        solutions for the test
-        :type expected_solutions: `list`[`dict`[`int`, `str`]]
         :param expected_solutions_and_to_or: Fixture providing a list of
         expected solutions when AND constraints have been replaced with OR
         constraints
         :type expected_solutions_and_to_or: `list`[`dict`[`int`, `str`]]
-        :param expected_edge_solutions: Fixture providing a list of expected
-        edge valid solutions for the test
-        :type expected_edge_solutions: `list`[`dict`[`int`, `str`]]
         :param expected_edge_solutions_and_to_or: Fixture providing a list of
         expected edge solutions when AND constraints have been replaced with OR
         constraints
@@ -2407,10 +2371,6 @@ class TestGraphGenerateInvalidSolutions:
         :param parsed_graph: Fixture providing a parsed :class:`Graph`
         :type parsed_graph: :class:`Graph`
         """
-        valid_solutions = {
-            "Event": expected_solutions,
-            "Edge": expected_edge_solutions
-        }
         invalid_solutions = {
             "Event": expected_solutions_and_to_or,
             "Edge": expected_edge_solutions_and_to_or
@@ -2418,14 +2378,13 @@ class TestGraphGenerateInvalidSolutions:
         events = parsed_graph.events
         combined_graph_solutions = Graph.get_combined_invalid_graph_solutions(
             invalid_solutions=invalid_solutions,
-            valid_solutions=valid_solutions,
             invalid_graph_events=events,
             events_with_sub_graph_event_solutions={}
         )
         assert len(combined_graph_solutions) == 2
         sequences = [
-            ["Event_A", "Event_D", "Event_E"],
-            ["Event_A", "Event_C", "Event_E"]
+            ["Event_A", "Event_C", "Event_E"],
+            ["Event_A", "Event_D", "Event_E"]
         ]
         for graph_sol, sequence in zip(
             combined_graph_solutions,
@@ -2438,24 +2397,16 @@ class TestGraphGenerateInvalidSolutions:
 
     @staticmethod
     def test_get_combined_invalid_graph_solutions_with_sub_graph_events(
-        expected_solutions: list[dict[str, int]],
         expected_solutions_and_to_or: list[dict[str, int]],
-        expected_edge_solutions: list[dict[str, int]],
         expected_edge_solutions_and_to_or: list[dict[str, int]],
         parsed_graph_with_loop_and_branch: Graph,
     ) -> None:
         """Tests :class:`Graph`.`get_combined_invalid_graph_solutions`
 
-        :param expected_solutions: Fixture providing list of dictionary of
-        expected event values
-        :type expected_solutions: `list`[`dict`[`str`, `int`]]
         :param expected_solutions_and_to_or: Fixture providing list of
         dictionary of expected event values with all AND constraints changed
         to OR
         :type expected_solutions_and_to_or: `list`[`dict`[`str`, `int`]]
-        :param expected_edge_solutions: Fixture providing list of dictionary of
-        expected edge values
-        :type expected_edge_solutions: `list`[`dict`[`str`, `int`]]
         :param expected_edge_solutions_and_to_or: Fixture providing list of
         dictionary of expected edge values with all AND constraints changed
         to OR
@@ -2464,10 +2415,6 @@ class TestGraphGenerateInvalidSolutions:
         :class:`Graph` that contains both loop and branch events
         :type parsed_graph_with_loop_and_branch: :class:`Graph`
         """
-        valid_solutions = {
-            "Event": expected_solutions,
-            "Edge": expected_edge_solutions
-        }
         invalid_solutions = {
             "Event": expected_solutions_and_to_or,
             "Edge": expected_edge_solutions_and_to_or
@@ -2511,7 +2458,6 @@ class TestGraphGenerateInvalidSolutions:
         }
         combined_solutions = Graph.get_combined_invalid_graph_solutions(
             invalid_solutions=invalid_solutions,
-            valid_solutions=valid_solutions,
             invalid_graph_events=events,
             events_with_sub_graph_event_solutions=(
                 events_with_sub_graph_event_solutions
@@ -2533,16 +2479,23 @@ class TestGraphGenerateInvalidSolutions:
         assert len(combined_solutions) == 2
         sequences = [
             ["Event_A", "Event_D", "Event_G", "Event_E"],
-            ["Event_A", "Event_F", "Event_F", "Event_E"]
+            ["Event_A", "Event_F", "Event_F", "Event_E"],
         ]
-        for graph_sol, sequence in zip(
-            combined_solutions,
-            sequences
-        ):
-            assert check_solution_correct(
-                graph_sol,
-                sequence
-            )
+        check_values = []
+        for sequence in sequences:
+            sequence_check = []
+            for graph_sol in combined_solutions:
+                if check_solution_correct(
+                    graph_sol,
+                    sequence
+                ):
+                    sequence_check.append(1)
+                else:
+                    sequence_check.append(0)
+            check_values.append(sequence_check)
+            assert sum(sequence_check) == 1
+        for check_value_1, check_value_2 in zip(*check_values):
+            assert check_value_1 != check_value_2
 
     @staticmethod
     def test_get_invalid_and_paths(

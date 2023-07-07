@@ -116,8 +116,7 @@ def get_graph_def_test_events(
     # get the valid graph solutions
     graph_sols = get_graph_sols_for_graph_def(
         graph=graph,
-        num_loops=options["num_loops"],
-        num_branches=options["num_branches"]
+        **options
     )
 
     # get valid event sequences
@@ -190,7 +189,8 @@ def get_categorised_valid_test_sequences(
 def get_graph_sols_for_graph_def(
     graph: Graph,
     num_loops: int,
-    num_branches: int
+    num_branches: int,
+    **solve_options
 ) -> list[GraphSolution]:
     """Function to get list of :class:`GraphSolution` from an input graph_def
 
@@ -205,7 +205,7 @@ def get_graph_sols_for_graph_def(
     instance that generated them
     :rtype: `list`[:class:`GraphSolution`]
     """
-    graph.solve()
+    graph.solve(**solve_options)
     graph_sols = graph.get_all_combined_graph_solutions(
         num_loops=num_loops,
         num_branches=num_branches
@@ -252,7 +252,7 @@ def get_categorised_invalid_test_sequences(
     )
     # get invalid sols from graph
     categorised_invalid_graph_sols_from_graph = (
-        graph.get_all_invalid_constraint_breaks()
+        graph.get_all_invalid_constraint_breaks(**options)
     )
     categorised_invalid_graph_sols = {
         **categorised_invalid_graph_sols_from_graph_sols,
