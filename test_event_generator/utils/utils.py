@@ -145,10 +145,15 @@ class SolutionStoreCore(CpSolverSolutionCallback):
     and values as list of the Type of core variable.
     :type core_variables: `dict`[`str`,
     :class:`Union`[`list`[:class:`Edge`], `list`[:class:`Group`]]]
+    :param solution_limit: Maximum number of solutions to find, defaults to
+    `None`
+    :type solution_limit: `int` | `None`, optional,
+
     """
     def __init__(
         self,
-        core_variables: dict[str, Union[list[Edge], list[Group]]]
+        core_variables: dict[str, Union[list[Edge], list[Group]]],
+        solution_limit: int | None = None
     ) -> None:
         """Constructor method.
         """
@@ -158,6 +163,7 @@ class SolutionStoreCore(CpSolverSolutionCallback):
             key: [] for key in core_variables.keys()
         }
         self.__solution_count = 0
+        self.solution_limit = solution_limit
 
     def on_solution_callback(self) -> None:
         """Implementation of abstract method for parent class.
@@ -169,6 +175,9 @@ class SolutionStoreCore(CpSolverSolutionCallback):
             self.store[core_variable_type].append(
                 self.get_solutions(core_variables)
             )
+        if self.solution_limit is not None:
+            if self.solution_limit <= self.__solution_count:
+                self.StopSearch()
 
     def get_solutions(
         self,
@@ -196,11 +205,20 @@ class SolutionStoreCore(CpSolverSolutionCallback):
         """
         return self.__solution_count
 
+    @property
+    def solution_limit(self) -> int | None:
+        return self.__solution_limit
+
+    @solution_limit.setter
+    def solution_limit(self, limit: int | None) -> None:
+        self.__solution_limit = limit
+
 
 def solve_model_core(
     model: CpModel,
     solver: CpSolver,
-    core_variables: dict[str, Union[list[Edge], list[Group]]]
+    core_variables: dict[str, Union[list[Edge], list[Group]]],
+    **solve_options
 ) -> dict[str, list[dict[str, int]]]:
     """Solve a CP-SAT model and return all valid solutions for all provided
     variables satisfying the constraints of the model
@@ -219,6 +237,29 @@ def solve_model_core(
     :rtype: `dict`[`str`, `list`[`dict`[`str`, `int`]]]
     """
     solution_store = SolutionStoreCore(core_variables=core_variables)
-    solver.parameters.enumerate_all_solutions = True
+    handle_solve_options(
+        solver=solver,
+        solution_store=solution_store,
+        **solve_options
+    )
     solver.Solve(model=model, solution_callback=solution_store)
     return solution_store.store
+
+
+def handle_solve_options(
+    solver: CpSolver,
+    solution_store: SolutionStoreCore,
+    **solve_options
+) -> None:
+    """Method to handle solver options
+
+    :param solver: The solver instance
+    :type solver: :class:`CpSolver`
+    :param solution_store: The solution store instance
+    :type solution_store: :class:`SolutionStoreCore`
+    """
+    if "solution_limit" in solve_options:
+        solution_store.solution_limit = solve_options["solution_limit"]
+    if "max_sol_time" in solve_options:
+        solver.parameters.max_time_in_seconds = solve_options["max_sol_time"]
+    solver.parameters.enumerate_all_solutions = True

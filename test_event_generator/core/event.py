@@ -241,10 +241,13 @@ class LoopEvent(Event):
         """
         self.sub_graph.parse_graph_def(graph_def)
 
-    def solve_sub_graph(self) -> None:
+    def solve_sub_graph(
+        self,
+        **solve_options
+    ) -> None:
         """Method to solve the instance's sub graph.
         """
-        self.sub_graph.solve()
+        self.sub_graph.solve(**solve_options)
 
 
 class BranchEvent(LoopEvent):
