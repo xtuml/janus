@@ -2518,3 +2518,60 @@ class TestGraphGenerateInvalidSolutions:
         TestGraphGenerateInvalidSolutions.check_invalid_and_loop_branch(
             combined_invalid_solutions
         )
+
+    @staticmethod
+    def test_get_all_invalid_constraint_breaks_no_filter(
+        parsed_graph_with_loop_and_branch: Graph
+    ) -> None:
+        """Tests method :class:`Graph`.`get_all_invalid_constraint_breaks`
+        when no filter has been added
+
+        :param parsed_graph_with_loop_and_branch: Fixture providing a
+        :class:`Graph` that contains both loop and branch events
+        :type parsed_graph_with_loop_and_branch: :class:`Graph`
+        """
+        parsed_graph_with_loop_and_branch.solve()
+        parsed_graph_with_loop_and_branch.get_all_combined_graph_solutions(
+            num_loops=2,
+            num_branches=2
+        )
+        invalid_constraint_breaks = (
+            parsed_graph_with_loop_and_branch.
+            get_all_invalid_constraint_breaks()
+        )
+        assert len(invalid_constraint_breaks) == 2
+        assert (
+            "XORConstraintBreaks" in invalid_constraint_breaks
+            and "ANDConstraintBreaks" in invalid_constraint_breaks
+        )
+        counter = 0
+        for _ in invalid_constraint_breaks["XORConstraintBreaks"][0]:
+            counter += 1
+        assert counter == 1
+        TestGraphGenerateInvalidSolutions.check_invalid_and_loop_branch(
+            invalid_constraint_breaks["ANDConstraintBreaks"][0]
+        )
+
+    @staticmethod
+    def test_get_all_invalid_constraint_breaks_filter(
+        parsed_graph_with_loop_and_branch: Graph
+    ) -> None:
+        """Tests method :class:`Graph`.`get_all_invalid_constraint_breaks`
+        when a filter has been added
+
+        :param parsed_graph_with_loop_and_branch: Fixture providing a
+        :class:`Graph` that contains both loop and branch events
+        :type parsed_graph_with_loop_and_branch: :class:`Graph`
+        """
+        parsed_graph_with_loop_and_branch.solve()
+        parsed_graph_with_loop_and_branch.get_all_combined_graph_solutions(
+            num_loops=2,
+            num_branches=2
+        )
+        invalid_constraint_breaks = (
+            parsed_graph_with_loop_and_branch.
+            get_all_invalid_constraint_breaks(
+                invalid_types=["StackedSolutions"]
+            )
+        )
+        assert len(invalid_constraint_breaks) == 0

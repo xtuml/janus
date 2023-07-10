@@ -854,7 +854,7 @@ class Graph:
 
     def get_all_invalid_constraint_breaks(
         self,
-        **solve_options
+        **options
     ) -> dict[str, tuple[list[GraphSolution], bool]]:
         """Method to generate all invalid xor and and constraint breaks and
         categorise them in a dictionary
@@ -864,18 +864,19 @@ class Graph:
         solution is invalid i.e. `False`
         :rtype: `dict`[`str`, `tuple`[`list`[:class:`GraphSolution`], `bool`]]
         """
-        invalid_xor_paths = self.get_invalid_xor_paths(**solve_options)
-        invalid_and_paths = self.get_invalid_and_paths(**solve_options)
-        categorised_invalid_solutions = {
-            "XORConstraintBreaks": (
-                invalid_xor_paths,
-                False
-            ),
-            "ANDConstraintBreaks": (
-                invalid_and_paths,
+        categorised_invalid_solutions = {}
+        for invalid_type, invalid_calc in zip(
+            ["XORConstraintBreaks", "ANDConstraintBreaks"],
+            [self.get_invalid_xor_paths, self.get_invalid_and_paths]
+        ):
+            if "invalid_types" in options:
+                if invalid_type not in options["invalid_types"]:
+                    continue
+            invalid_paths = invalid_calc(**options)
+            categorised_invalid_solutions[invalid_type] = (
+                invalid_paths,
                 False
             )
-        }
         return categorised_invalid_solutions
 
     def get_invalid_xor_paths(
