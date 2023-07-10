@@ -276,6 +276,14 @@ def get_categorised_invalid_test_sequences(
         ),
         False
     )
+    # filter out invalid sequences not specified
+    if "invalid_types" in options:
+        categorised_invalid_audit_event_sequences = {
+            category: invalid_audit_event_sequences
+            for category, invalid_audit_event_sequences in
+            categorised_invalid_audit_event_sequences.items()
+            if category in options["invalid_types"]
+        }
     return categorised_invalid_audit_event_sequences
 
 

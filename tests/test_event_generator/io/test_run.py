@@ -401,3 +401,32 @@ def test_puml_to_test_events_solution_max_sol_time(
         ANDFork_loop_puml,
         **options
     )
+
+
+def test_puml_to_test_events_filter_invalid_solutions(
+    ANDFork_loop_puml: str
+) -> None:
+    """Tests the method `puml_to_test_events` with a subset of invalid types
+    requested
+
+    :param ANDFork_loop_puml: Fixture providing a str representation of a puml
+    file
+    :type ANDFork_loop_puml: `str`
+    """
+    options = {
+        "is_template": False,
+        "return_plots": False,
+        "invalid": True,
+        "num_branches": 2,
+        "num_loops": 2,
+        "invalid_types": [
+            "StackedSolutions"
+        ]
+    }
+    test_events = puml_to_test_events(
+        ANDFork_loop_puml,
+        **options
+    )
+    assert len(test_events["ANDFork_loop_a"]) == 2
+    assert "StackedSolutions" in test_events["ANDFork_loop_a"]
+    assert "ValidSols" in test_events["ANDFork_loop_a"]
