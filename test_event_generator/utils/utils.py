@@ -242,6 +242,10 @@ def solve_model_core(
         solution_store=solution_store,
         **solve_options
     )
+    # in case of solution limit set to zero
+    if "solution_limit" in solve_options:
+        if solve_options["solution_limit"] == 0:
+            return solution_store.store
     solver.Solve(model=model, solution_callback=solution_store)
     return solution_store.store
 
