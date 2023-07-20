@@ -430,3 +430,32 @@ def test_puml_to_test_events_filter_invalid_solutions(
     assert len(test_events["ANDFork_loop_a"]) == 2
     assert "StackedSolutions" in test_events["ANDFork_loop_a"]
     assert "ValidSols" in test_events["ANDFork_loop_a"]
+
+
+def test_puml_to_test_break_points(
+    loop_break_puml: str
+) -> None:
+    """Tests the method `puml_to_test_events` with a loop with a break point
+    as input
+
+    :param loop_break_puml: Fixture providing a str representation of a puml
+    file
+    :type loop_break_puml: `str`
+    """
+    options = {
+        "is_template": False,
+        "return_plots": False,
+        "invalid": False,
+        "num_branches": 2,
+        "num_loops": 3,
+    }
+    test_events = puml_to_test_events(
+        loop_break_puml,
+        **options
+    )
+    assert len(test_events["loop_break"]) == 1
+    assert "ValidSols" in test_events["loop_break"]
+    counter = 0
+    for _ in test_events["loop_break"]["ValidSols"][0]:
+        counter += 1
+    assert counter == 4

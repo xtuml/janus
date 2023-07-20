@@ -278,6 +278,8 @@ class EventSolution:
             self.parse_dynamic_control_events(
                 meta_data["dynamic_control_events"]
             )
+        if "isBreak" in meta_data:
+            self.is_break_point = meta_data["isBreak"]
         self.parse_event_id_tuple(meta_data)
 
     def parse_event_id_tuple(
