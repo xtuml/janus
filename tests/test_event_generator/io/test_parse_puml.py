@@ -1,6 +1,9 @@
 """Tests for parsing puml files
 """
+
+import pytest
 import flatdict
+
 from test_event_generator.io.parse_puml import get_graph_defs_from_puml
 
 
@@ -179,3 +182,54 @@ def check_group_equivalency(
             ) == (
                 len(sub_2_item[0].split(":"))
             )
+
+
+def test_get_graph_defs_from_puml_xor_detach(
+    XOR_detach_puml: str,
+    XOR_detach_graph_def: dict
+) -> None:
+    graph_defs = get_graph_defs_from_puml(XOR_detach_puml)
+    assert len(graph_defs) == 1
+    assert "XORFork_detach" in graph_defs
+    produced_graph_def = graph_defs["XORFork_detach"]
+    assert len(XOR_detach_graph_def) == len(produced_graph_def)
+    assert not set(produced_graph_def.keys()).difference(
+        set(XOR_detach_graph_def.keys())
+    )
+    # loop over keys and check basic equivalency
+    for key, expected_event_def in XOR_detach_graph_def.items():
+        produced_event_def = produced_graph_def[key]
+        check_event_def_equivalency(
+            expected_event_def,
+            produced_event_def
+        )
+
+
+def test_get_graph_defs_from_puml_loop_break_fail(
+    loop_break_fail_puml: str,
+) -> None:
+    with pytest.raises(KeyError) as error:
+        get_graph_defs_from_puml(loop_break_fail_puml)
+    assert error.value.args[0][0] is None
+    assert error.value.args[0][1].event_tuple == ('B', 0)
+
+
+def test_get_graph_defs_from_puml_loop_break(
+    loop_break_puml: str,
+    loop_break_graph_def: dict
+) -> None:
+    graph_defs = get_graph_defs_from_puml(loop_break_puml)
+    assert len(graph_defs) == 1
+    assert "loop_break" in graph_defs
+    produced_graph_def = graph_defs["loop_break"]
+    assert len(loop_break_graph_def) == len(produced_graph_def)
+    assert not set(produced_graph_def.keys()).difference(
+        set(loop_break_graph_def.keys())
+    )
+    # loop over keys and check basic equivalency
+    for key, expected_event_def in loop_break_graph_def.items():
+        produced_event_def = produced_graph_def[key]
+        check_event_def_equivalency(
+            expected_event_def,
+            produced_event_def
+        )

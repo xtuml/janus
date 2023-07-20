@@ -125,9 +125,9 @@ def parse_raw_job_def_lines(
             )
             if indicator:
                 indicator = " ".join(indicator.group(1).strip().split())
-                if statement_mappings[indicator] == "DETACH":
+                if statement_mappings[indicator][0] == "DETACH":
                     parsed_lines[-1].is_end = True
-                elif statement_mappings[indicator] == "BREAK":
+                elif statement_mappings[indicator][0] == "BREAK":
                     parsed_lines[-1].is_break = True
                 else:
                     parsed_lines.extend(statement_mappings[indicator])
@@ -512,7 +512,8 @@ class Job:
                 ),
                 "meta_data": {
                     "EventType": event.event_type,
-                    "isBreak": event.is_break
+                    "isBreak": event.is_break,
+                    "occurenceId": event.occurence_id
                 }
             }
             # if the EventData is LoopEventData get the graph definition of

@@ -345,7 +345,12 @@ def loop_loop_puml(
 
 @pytest.fixture
 def loop_loop_graph_def(
-):
+) -> dict[str, dict]:
+    """Fixture providing the graph def equivalent to `loop_loop_puml`
+
+    :return: Returns the graph definition
+    :rtype: `dict`[`str`, `dict`]
+    """
     return {
         "A_0": {
             "group_in": None,
@@ -438,6 +443,266 @@ def loop_loop_graph_def(
             "group_out": None,
             "meta_data": {
                 "EventType": "E"
+            }
+        }
+    }
+
+
+@pytest.fixture
+def XOR_detach_puml(
+) -> Literal['@startuml\npartition "XORFork_detach" {\n    group "…']:
+    """Fixture to provide a puml file with an XOR fork with a
+    detach statement
+
+    :return: Returns a string of the puml file
+    :rtype: `str`
+    """
+    return (
+        '@startuml\npartition "XORFork_detach" {\n'
+        '    group "XORFork_detach"\n'
+        '        :A;\n'
+        '        if (true) then\n'
+        '            :B;\n'
+        '        else\n'
+        '            :C;\n'
+        '            detach\n'
+        '        endif\n'
+        '        :D;\n'
+        '    end group\n'
+        '}\n'
+        '@enduml'
+    )
+
+
+@pytest.fixture
+def XOR_detach_graph_def() -> dict[str, dict]:
+    """Fixture providing the graph def equivalent to `XOR_detach_puml`
+
+    :return: Returns the graph definition
+    :rtype: `dict`[`str`, `dict`]
+    """
+    return {
+        "A_0": {
+            "group_in": None,
+            "group_out": {
+                "type": "XOR",
+                "sub_groups": [
+                    "A_0->B_0",
+                    "A_0->C_0"
+                ]
+            },
+            "meta_data": {
+                "EventType": "A",
+                "isBreak": False,
+                "occurenceId": 0
+            }
+        },
+        "B_0": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "A_0->B_0"
+                ]
+            },
+            "group_out": {
+                "type": "OR",
+                "sub_groups": [
+                    "B_0->D_0"
+                ]
+            },
+            "meta_data": {
+                "EventType": "B",
+                "isBreak": False,
+                "occurenceId": 0
+            }
+        },
+        "C_0": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "A_0->C_0"
+                ]
+            },
+            "group_out": None,
+            "meta_data": {
+                "EventType": "C",
+                "isBreak": False,
+                "occurenceId": 0
+            }
+        },
+        "D_0": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "B_0->D_0",
+                ]
+            },
+            "group_out": None,
+            "meta_data": {
+                "EventType": "D",
+                "isBreak": False,
+                "occurenceId": 0
+            }
+        }
+    }
+
+
+@pytest.fixture
+def loop_break_fail_puml(
+) -> Literal['@startuml\npartition "loop_break" {\n    group "loop…']:
+    """Fixture to provide a puml file with a loop and break point that will
+    fail to be parsed
+
+    :return: Returns a string of the puml file
+    :rtype: `str`
+    """
+    return (
+        '@startuml\n'
+        'partition "loop_break" {\n'
+        '    group "loop_break"\n'
+        '        :A;\n'
+        '        repeat\n'
+        '            if (XOR) then\n'
+        '                :B;\n'
+        '                break\n'
+        '            else\n'
+        '                :C;\n'
+        '            endif\n'
+        '        repeat while\n'
+        '        :D;\n'
+        '    end group\n'
+        '}\n'
+        '@enduml'
+    )
+
+
+@pytest.fixture
+def loop_break_puml(
+) -> Literal['@startuml\npartition "loop_break" {\n    group "loop…']:
+    """Fixture to provide a puml file with a loop and break point
+
+    :return: Returns a string of the puml file
+    :rtype: `str`
+    """
+    return (
+        '@startuml\n'
+        'partition "loop_break" {\n'
+        '    group "loop_break"\n'
+        '        :A;\n'
+        '        repeat\n'
+        '            :B;\n'
+        '            if (XOR) then\n'
+        '                :C;\n'
+        '                break\n'
+        '            else\n'
+        '                :D;\n'
+        '            endif\n'
+        '        repeat while\n'
+        '        :E;\n'
+        '    end group\n'
+        '}\n'
+        '@enduml\n'
+    )
+
+
+@pytest.fixture
+def loop_break_graph_def() -> dict[str, dict]:
+    """Fixture providing the graph def equivalent to `loop_break`
+
+    :return: Returns the graph definition
+    :rtype: `dict`[`str`, `dict`]
+    """
+    return {
+        "A_0": {
+            "group_in": None,
+            "group_out": {
+                "type": "OR",
+                "sub_groups": [
+                    "A_0->Loop_0"
+                ]
+            },
+            "meta_data": {
+                "EventType": "A",
+                "isBreak": False,
+                "occurenceId": 0
+            }
+        },
+        "Loop_0": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "A_0->Loop_0"
+                ]
+            },
+            "group_out": {
+                "type": "OR",
+                "sub_groups": [
+                    "Loop_0->E_0"
+                ]
+            },
+            "meta_data": {
+                "EventType": "Loop",
+                "isBreak": False,
+                "occurenceId": 0
+            },
+            "loop_graph": {
+                "B_0": {
+                    "group_in": None,
+                    "group_out": {
+                        "type": "XOR",
+                        "sub_groups": [
+                            "B_0->C_0",
+                            "B_0->D_0"
+                        ]
+                    },
+                    "meta_data": {
+                        "EventType": "B",
+                        "isBreak": False,
+                        "occurenceId": 0
+                    }
+                },
+                "C_0": {
+                    "group_in": {
+                        "type": "OR",
+                        "sub_groups": [
+                            "B_0->C_0"
+                        ]
+                    },
+                    "group_out": None,
+                    "meta_data": {
+                        "EventType": "C",
+                        "isBreak": True,
+                        "occurenceId": 0
+                    }
+                },
+                "D_0": {
+                    "group_in": {
+                        "type": "OR",
+                        "sub_groups": [
+                            "B_0->D_0"
+                        ]
+                    },
+                    "group_out": None,
+                    "meta_data": {
+                        "EventType": "D",
+                        "isBreak": False,
+                        "occurenceId": 0
+                    }
+                }
+            }
+        },
+        "E_0": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "Loop_0->E_0"
+                ]
+            },
+            "group_out": None,
+            "meta_data": {
+                "EventType": "E",
+                "isBreak": False,
+                "occurenceId": 0
             }
         }
     }
