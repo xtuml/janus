@@ -1,4 +1,5 @@
 # pylint: disable=R0902
+# pylint: disable=C0302
 """Parser for .puml files
 """
 from __future__ import annotations
@@ -106,6 +107,7 @@ def parse_raw_job_def_lines(
     :return: Returns a list of mapped indicators
     :rtype: `list`[`str`]
     """
+    event_type_count = {}
     parsed_lines: list[str | EventData] = []
     for line in raw_job_def_lines:
         # clean line
@@ -117,6 +119,12 @@ def parse_raw_job_def_lines(
             event = EventData()
             event.parse_cleaned_event_string(cleaned_line)
             parsed_lines.append(event)
+            # add the occurence id to the event
+            if event.event_type not in event_type_count:
+                event_type_count[event.event_type] = 0
+            event.occurence_id = event_type_count[event.event_type]
+            event.set_self_branch_counts()
+            event_type_count[event.event_type] += 1
         # non event options
         else:
             indicator = re.search(
@@ -178,21 +186,32 @@ def loop_parse(
     list_to_append = loop_parsed_job
     # list to hold LoopEventData - end member will be the loop entries are
     # added to
-    loop_events: list[LoopEventData] = []
+    loop_events: list[LoopEventData | BranchEventData] = []
     for entry in parsed_job:
         # if EventData add to the list to append
         if isinstance(entry, EventData):
             list_to_append.append(entry)
-        # if the entry indicates a loop else add to list to append
-        elif "LOOP" in entry:
-            # if a loop start create new LoopEventData and add to loop
-            # events list, add to list_to_appned and update list_to_append
-            # to the LoopEventData's sub job parsed job list
+        # if the entry indicates a loop or branch else add to list to append
+        elif "LOOP" in entry or "BRANCH" in entry:
             if "START" in entry:
-                new_loop_event = LoopEventData(
-                    event_type_occurence_count
-                )
-                new_loop_event.event_type = "Loop"
+                if "LOOP" in entry:
+                    # if a loop start create new LoopEventData and add to loop
+                    # events list, add to list_to_appned and update
+                    # list_to_append
+                    # to the LoopEventData's sub job parsed job list
+                    new_loop_event = LoopEventData(
+                        event_type_occurence_count
+                    )
+                    new_loop_event.event_type = "Loop"
+                else:
+                    # if a branch start create BranchEventData and remove
+                    # previous event in list_to_append which is then replaced
+                    # by the BranchEventData
+                    event_to_replace = list_to_append.pop()
+                    new_loop_event = BranchEventData(
+                        event_type_occurence_count=event_type_occurence_count,
+                        event_to_replace=event_to_replace
+                    )
                 loop_events.append(new_loop_event)
                 list_to_append.append(new_loop_event)
                 list_to_append = new_loop_event.get_job_parsed_job_list()
@@ -213,6 +232,69 @@ def loop_parse(
         else:
             list_to_append.append(entry)
     return loop_parsed_job
+
+
+def inject_branch_indicators(
+    parsed_raw_job_def: list["EventData" | list[str] | list[tuple[str, str]]]
+) -> list["EventData" | list[str] | list[tuple[str, str]]]:
+    """Method to inject branch indicators into the parsed job def.
+
+    Branch indicators will start immediately following an :class:`EventData`
+    that is the user of a Branch Count dynamic control. The indicator for the
+    end of the Branch is placed directly before the end of a path (start of a
+    new path or end of all the paths within a XOR, OR or AND Group) that the
+    user of the Branch Count is within. If there is start of a Branch indicator
+    that starts after another Branch indicator and it is not within a path
+    that started after the previous Branch indicator its end indicator will be
+    placed directly preceding the the other Branch Counts end indicator.
+
+    :param parsed_raw_job_def: The list taken from the parsed puml lines
+    :type parsed_raw_job_def: `list`[:class:`EventData`  |  `list`[`str`]  |
+    `list`[`tuple`[`str`, `str`]]]
+    :return: Returns a list with the branch indicators added
+    :rtype: `list`[:class:`EventData` | `list`[`str`] | `list`[`tuple`[`str`,
+    `str`]]]
+    """
+    branch_events_to_use = {}
+    indicators = []
+    parsed_raw_job_def_with_branch_events = []
+    for entry in parsed_raw_job_def:
+        if isinstance(entry, EventData):
+            parsed_raw_job_def_with_branch_events.append(entry)
+            if entry.branch_counts:
+                branch_events_to_use = {
+                    **branch_events_to_use,
+                    **{
+                        branch_event_data["user"]: ""
+                        for branch_event_data in entry.branch_counts.values()
+                    }
+                }
+            if entry.event_tuple in branch_events_to_use:
+                parsed_raw_job_def_with_branch_events.append(
+                    ("START", "BRANCH")
+                )
+                indicators.append(("START", "BRANCH"))
+            continue
+        if isinstance(entry, tuple):
+            while (
+                ("PATH" in entry or "END" in entry)
+                and indicators[-1] == ("START", "BRANCH")
+            ):
+                parsed_raw_job_def_with_branch_events.append(
+                    ("END", "BRANCH")
+                )
+                indicators.pop()
+            if "START" in entry:
+                indicators.append(entry)
+            if "END" in entry:
+                indicators.pop()
+        parsed_raw_job_def_with_branch_events.append(entry)
+    while indicators:
+        parsed_raw_job_def_with_branch_events.append(
+            ("END", "BRANCH")
+        )
+        indicators.pop()
+    return parsed_raw_job_def_with_branch_events
 
 
 class Job:
@@ -300,7 +382,11 @@ class Job:
         raw_job_def_lines = raw_job_def_tuple[1].split('\n')
         # pre-parse
         pre_parse = parse_raw_job_def_lines(raw_job_def_lines)
-        # parse loops
+        # inject branch events
+        pre_parse = inject_branch_indicators(
+            pre_parse
+        )
+        # parse loops and branches
         self.parsed_job = loop_parse(
             pre_parse,
             self.event_type_occurence_count
@@ -516,10 +602,19 @@ class Job:
                     "occurenceId": event.occurence_id
                 }
             }
+            if event.branch_counts or event.loop_counts:
+                graph_definition[
+                    str(event)
+                ]["meta_data"]["dynamic_control_events"] = (
+                    event.create_dynamic_control_events_meta_data()
+                )
             # if the EventData is LoopEventData get the graph definition of
             # the sub job
             if isinstance(event, LoopEventData):
-                graph_definition[str(event)]["loop_graph"] = (
+                sub_graph_indicator = "loop_graph"
+                if isinstance(event, BranchEventData):
+                    sub_graph_indicator = "branch_graph"
+                graph_definition[str(event)][sub_graph_indicator] = (
                     event.job.write_graph_definition()
                 )
         return graph_definition
@@ -546,7 +641,7 @@ class EventData:
         self,
         event_string: str
     ) -> None:
-        """MEthod to parse the event from a cleaned event string
+        """Method to parse the event from a cleaned event string
 
         :param event_string: The cleaned event string
         :type event_string: `str`
@@ -656,11 +751,20 @@ class EventData:
         :param raw_data: The raw data to search in
         :type raw_data: `list`[`str`]
         """
+        user_data = self.pop_from_list_of_strings_by_substring(
+            raw_data,
+            "user="
+        )
+        # get user data tuple
+        user_data_split = user_data.split("(")
+        user_data_tuple = (
+            user_data_split[0],
+            int(user_data_split[1][:-1])
+            if len(user_data_split) == 2
+            else 0
+        )
         self.loop_counts[name] = {
-            "user": self.pop_from_list_of_strings_by_substring(
-                raw_data,
-                "user="
-            )
+            "user": user_data_tuple
         }
 
     def parse_branch_count(
@@ -679,8 +783,19 @@ class EventData:
             raw_data,
             "user="
         )
+        # get user data tuple
+        if user_data:
+            user_data_split = user_data.split("(")
+            user_data_tuple = (
+                user_data_split[0],
+                int(user_data_split[1][:-1])
+                if len(user_data_split) == 2
+                else 0
+            )
+        else:
+            user_data_tuple = (self.event_type, )
         self.branch_counts[name] = {
-            "user": user_data if user_data else self.event_type
+            "user": user_data_tuple
         }
 
     def parse_iinv(
@@ -739,6 +854,86 @@ class EventData:
             "is_src": bool(is_src)
         }
 
+    def create_dynamic_control_events_meta_data(self) -> dict:
+        """Method to create the dynamic control event data for the meta data
+
+        :return: Returns a dictionary of the dynamic control event data of the
+        instance
+        :rtype: `dict`
+        """
+        return {
+            **self.create_specified_control_events_meta_data(
+                "LOOPCOUNT",
+                self.loop_counts
+            ),
+            **self.create_specified_control_events_meta_data(
+                "BRANCHCOUNT",
+                self.branch_counts
+            )
+        }
+
+    def create_specified_control_events_meta_data(
+        self,
+        control_type: str,
+        control_holder: dict
+    ) -> dict:
+        """Method to create a dynamic control event meta data for a given
+        control holder dictionary
+
+        :param control_type: A string providing the control type
+        :type control_type: `str`
+        :param control_holder: The control holder to create the dynamic
+        control event data for
+        :type control_holder: `dict`
+        :return: Returns a dictionary of the dynamic control event data
+        :rtype: `dict`
+        """
+        control_events_meta_data = {}
+        for name, control in control_holder.items():
+            control_events_meta_data[name] = {
+                "control_type": control_type,
+                "provider": {
+                    "EventType": self.event_type,
+                    "occurenceId": self.occurence_id
+                },
+                "user": {
+                    "EventType": control["user"][0],
+                    "occurenceId": control["user"][1]
+                }
+            }
+        return control_events_meta_data
+
+    @property
+    def occurence_id(self) -> int:
+        """Property defining the occurence id of the instance i.e. The number
+        representing the ordered appearance of the EventType in the puml
+
+        :return: Returns the occurence id
+        :rtype: `int`
+        """
+        return self._ocurrence_id
+
+    @occurence_id.setter
+    def occurence_id(self, occ_id: int | None) -> None:
+        """Setter for the occurence id property
+
+        :param occ_id: The occurence id to set to
+        :type occ_id: `int` | `None`
+        """
+        self._ocurrence_id = occ_id
+
+    def set_self_branch_counts(self) -> None:
+        """Method to set the branch counts data after the occurence id has
+        been set
+        """
+        if self.branch_counts:
+            for branch_count_data in self.branch_counts.values():
+                if (
+                    len(branch_count_data["user"]) == 1
+                    and self.occurence_id is not None
+                ):
+                    branch_count_data["user"] = self.event_tuple
+
 
 class LoopEventData(EventData):
     """Sub class of :class:`EventData` to handle loops in job def
@@ -750,7 +945,7 @@ class LoopEventData(EventData):
     """
     def __init__(
         self,
-        event_type_occurence_count: dict[str, "EventData" | "LoopEventData"]
+        event_type_occurence_count: dict[str, int]
     ) -> None:
         """Constructor method
         """
@@ -768,6 +963,45 @@ class LoopEventData(EventData):
         :rtype: `list`[`str` | :class:`EventData`]
         """
         return self.job.parsed_job
+
+
+class BranchEventData(LoopEventData):
+    """Sub class of :class:`LoopEventData` to hold a subgraph at a Branch
+    Event. Replaces an :class:`EventData` in the parse PUML list.
+
+    :param event_type_occurence_count: Dictionary of event type occurence count
+    :type event_type_occurence_count: `dict`[ `str`, `int` ]
+    :param event_to_replace: An event that is to be replaced from the parsed
+    PUML list
+    :type event_to_replace: :class:`EventData`
+    """
+    def __init__(
+        self,
+        event_type_occurence_count: dict[
+            str, int
+        ],
+        event_to_replace: EventData
+    ) -> None:
+        """Constructor method
+        """
+        super().__init__(
+            event_type_occurence_count
+        )
+        self.copy_event_to_replace_attributes(event_to_replace)
+
+    def copy_event_to_replace_attributes(
+        self,
+        event_to_replace: EventData
+    ) -> None:
+        """Method to copy all data from a :class:`EventData` instance to the
+        instance itself
+
+        :param event_to_replace: The :class:`EventData` whose data will be
+        copied across
+        :type event_to_replace: :class:`EventData`
+        """
+        for attr_name, attr_value in vars(event_to_replace).items():
+            setattr(self, attr_name, attr_value)
 
 
 class Group:
