@@ -459,3 +459,32 @@ def test_puml_to_test_break_points(
     for _ in test_events["loop_break"]["ValidSols"][0]:
         counter += 1
     assert counter == 4
+
+
+def test_puml_to_test_events_branch_events(
+    branch_puml: str
+) -> None:
+    """Tests `puml_to_test_events` to ensure the correct number of sequences
+    are generated
+
+    :param branch_puml: Fixture providing a string representation of a puml
+    file containing branch count events
+    :type branch_puml: `str`
+    """
+    options = {
+        "is_template": False,
+        "return_plots": False,
+        "invalid": False,
+        "num_branches": 2,
+        "num_loops": 2,
+    }
+    test_events = puml_to_test_events(
+        branch_puml,
+        **options
+    )
+    assert len(test_events["Branch_Counts"]) == 1
+    assert "ValidSols" in test_events["Branch_Counts"]
+    counter = 0
+    for _ in test_events["Branch_Counts"]["ValidSols"][0]:
+        counter += 1
+    assert counter == 2

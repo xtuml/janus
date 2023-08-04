@@ -4,7 +4,13 @@
 import pytest
 import flatdict
 
-from test_event_generator.io.parse_puml import get_graph_defs_from_puml
+from test_event_generator.io.parse_puml import (
+    get_graph_defs_from_puml,
+    inject_branch_indicators,
+    get_unparsed_job_defs,
+    parse_raw_job_def_lines,
+    EventData
+)
 
 
 def test_get_graph_defs_from_puml_ANDFork_loop(
@@ -127,10 +133,9 @@ def check_event_def_equivalency(
         pass
     else:
         assert event_def_1_group_out == event_def_2_group_out
-    assert (
-        event_def_1["meta_data"]["EventType"]
-    ) == (
-        event_def_2["meta_data"]["EventType"]
+    check_dict_equivalency(
+        event_def_1["meta_data"],
+        event_def_2["meta_data"]
     )
 
 
@@ -184,6 +189,30 @@ def check_group_equivalency(
             )
 
 
+def check_dict_equivalency(
+    dict_1: dict,
+    dict_2: dict
+) -> None:
+    flat_dict_1 = flatdict.FlatterDict(
+        dict_1
+    )
+    flat_dict_2 = flatdict.FlatterDict(
+        dict_2
+    )
+    for sub_1_item, sub_2_item in zip(
+        sorted(flat_dict_1.items(), key=lambda item: item[0]),
+        sorted(flat_dict_2.items(), key=lambda item: item[0])
+    ):
+        # check sorted values are the same
+        assert sub_1_item[1] == sub_2_item[1]
+        # check the value lies at the correct depth
+        assert (
+            len(sub_1_item[0].split(":"))
+        ) == (
+            len(sub_2_item[0].split(":"))
+        )
+
+
 def test_get_graph_defs_from_puml_xor_detach(
     XOR_detach_puml: str,
     XOR_detach_graph_def: dict
@@ -228,6 +257,66 @@ def test_get_graph_defs_from_puml_loop_break(
     )
     # loop over keys and check basic equivalency
     for key, expected_event_def in loop_break_graph_def.items():
+        produced_event_def = produced_graph_def[key]
+        check_event_def_equivalency(
+            expected_event_def,
+            produced_event_def
+        )
+
+
+def test_inject_branch_indicators(
+    branch_puml: str
+) -> None:
+    """Tests `inject_branch_indicators` for the correct behaviour
+
+    :param branch_puml: Fixture providing a string representation of a puml
+    file containing branch count events
+    :type branch_puml: `str`
+    """
+    unparsed_job_defs = get_unparsed_job_defs(branch_puml)
+    parsed_lines = parse_raw_job_def_lines(unparsed_job_defs[0][1].split("\n"))
+    parsed_lines_with_injected_branch_indicators = inject_branch_indicators(
+        parsed_lines
+    )
+    expected_answers = [
+        ("A", 0), ('START', 'XOR'), ('PATH', 'XOR'), ("B", 0),
+        ('START', 'BRANCH'), ("C", 0), ("D", 0), ('START', 'BRANCH'),
+        ("E", 0), ("F", 0), ('END', 'BRANCH'), ('END', 'BRANCH'),
+        ('PATH', 'XOR'), ("G", 0), ("END", "XOR"), ("H", 0)
+    ]
+    for expected_value, test_value in zip(
+        expected_answers,
+        parsed_lines_with_injected_branch_indicators
+    ):
+        if isinstance(test_value, EventData):
+            test_value = test_value.event_tuple
+        assert test_value == expected_value
+
+
+def test_get_graph_defs_from_puml_branch(
+    branch_puml: str,
+    branch_graph_def: dict
+) -> None:
+    """Tests `get_graph_defs_from_puml` when the input puml string contains
+    branch events
+
+    :param branch_puml: Fixture providing a string representation of a puml
+    file containing branch count events
+    :type branch_puml: `str`
+    :param branch_graph_def: Fixture providing the expected graph def for the
+    puml input string
+    :type branch_graph_def: `dict`
+    """
+    graph_defs = get_graph_defs_from_puml(branch_puml)
+    assert len(graph_defs) == 1
+    assert "Branch_Counts" in graph_defs
+    produced_graph_def = graph_defs["Branch_Counts"]
+    assert len(branch_graph_def) == len(produced_graph_def)
+    assert not set(produced_graph_def.keys()).difference(
+        set(branch_graph_def.keys())
+    )
+    # loop over keys and check basic equivalency
+    for key, expected_event_def in branch_graph_def.items():
         produced_event_def = produced_graph_def[key]
         check_event_def_equivalency(
             expected_event_def,

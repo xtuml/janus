@@ -706,3 +706,197 @@ def loop_break_graph_def() -> dict[str, dict]:
             }
         }
     }
+
+
+@pytest.fixture
+def branch_puml(
+) -> Literal['@startuml\npartition "Branch_Counts" {\n    group "B…']:
+    """Fixture to provide a puml file with Branch Count user events
+
+    :return: Returns a string of the puml file
+    :rtype: `str`
+    """
+    return (
+        '@startuml\n'
+        'partition "Branch_Counts" {\n'
+        '    group "Branch_Counts"\n'
+        '        :A;\n'
+        '        if (XOR) then (true)\n'
+        '            :B,BCNT,name=BC1;\n'
+        '            :C;\n'
+        '            :D,BCNT,name=BC2;\n'
+        '            :E;\n'
+        '            :F;\n'
+        '        else (false)\n'
+        '            :G;\n'
+        '        endif\n'
+        '        :H;\n'
+        '    end group\n'
+        '}\n'
+        '@enduml'
+    )
+
+
+@pytest.fixture
+def branch_graph_def() -> dict:
+    """Fixture providing the graph def equivalent to `branch_puml`
+
+    :return: Returns the graph definition
+    :rtype: `dict`[`str`, `dict`]
+    """
+    return {
+        "A_0": {
+            "group_in": None,
+            "group_out": {
+                "type": "XOR",
+                "sub_groups": [
+                    "A_0->B_0",
+                    "A_0->G_0"
+                ]
+            },
+            "meta_data": {
+                "EventType": "A",
+                "isBreak": False,
+                "occurenceId": 0
+            }
+        },
+        "B_0": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "A_0->B_0"
+                ]
+            },
+            "group_out": {
+                "type": "OR",
+                "sub_groups": [
+                    "B_0->H_0"
+                ]
+            },
+            "meta_data": {
+                "EventType": "B",
+                "isBreak": False,
+                "occurenceId": 0,
+                "dynamic_control_events": {
+                    "BC1": {
+                        "control_type": "BRANCHCOUNT",
+                        "provider": {
+                            "EventType": "B",
+                            "occurenceId": 0
+                        },
+                        "user": {
+                            "EventType": "B",
+                            "occurenceId": 0
+                        }
+                    }
+                }
+            },
+            "branch_graph": {
+                "C_0": {
+                    "group_in": None,
+                    "group_out": {
+                        "type": "OR",
+                        "sub_groups": [
+                            "C_0->D_0"
+                        ]
+                    },
+                    "meta_data": {
+                        "EventType": "C",
+                        "isBreak": False,
+                        "occurenceId": 0
+                    }
+                },
+                "D_0": {
+                    "group_in": {
+                        "type": "OR",
+                        "sub_groups": [
+                            "C_0->D_0"
+                        ]
+                    },
+                    "group_out": None,
+                    "meta_data": {
+                        "EventType": "D",
+                        "isBreak": False,
+                        "occurenceId": 0,
+                        "dynamic_control_events": {
+                            "BC2": {
+                                "control_type": "BRANCHCOUNT",
+                                "provider": {
+                                    "EventType": "D",
+                                    "occurenceId": 0
+                                },
+                                "user": {
+                                    "EventType": "D",
+                                    "occurenceId": 0
+                                }
+                            }
+                        }
+                    },
+                    "branch_graph": {
+                        "E_0": {
+                            "group_in": None,
+                            "group_out": {
+                                "type": "OR",
+                                "sub_groups": [
+                                    "E_0->F_0"
+                                ]
+                            },
+                            "meta_data": {
+                                "EventType": "E",
+                                "isBreak": False,
+                                "occurenceId": 0
+                            }
+                        },
+                        "F_0": {
+                            "group_in": {
+                                "type": "OR",
+                                "sub_groups": [
+                                    "E_0->F_0"
+                                ]
+                            },
+                            "group_out": None,
+                            "meta_data": {
+                                "EventType": "F",
+                                "isBreak": False,
+                                "occurenceId": 0
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "G_0": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "A_0->G_0"
+                ]
+            },
+            "group_out": {
+                "type": "OR",
+                "sub_groups": [
+                    "G_0->H_0"
+                ]
+            },
+            "meta_data": {
+                "EventType": "G",
+                "isBreak": False,
+                "occurenceId": 0
+            }
+        },
+        "H_0": {
+            "group_in": {
+                "type": "OR",
+                "sub_groups": [
+                    "B_0->H_0",
+                    "G_0->H_0"
+                ]
+            },
+            "group_out": None,
+            "meta_data": {
+                "EventType": "H",
+                "isBreak": False,
+                "occurenceId": 0
+            }
+        }
+    }
