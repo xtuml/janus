@@ -24,4 +24,5 @@ jobs:
       - name: Run Tests
         run: |
           export PYTHONPATH=/workspaces/test-event-generator:$PYTHONPATH
-          pytest --junitxml=report.xml
+          pytest
+          flake8
