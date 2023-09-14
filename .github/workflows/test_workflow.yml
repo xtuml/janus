@@ -21,6 +21,7 @@ jobs:
           flake8 --version
 
           pip install -r requirements.txt
+
       - name: Run Tests
         run: |
           export PYTHONPATH=/workspaces/test-event-generator:$PYTHONPATH
