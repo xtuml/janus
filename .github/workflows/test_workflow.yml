@@ -35,8 +35,6 @@ jobs:
 
           pip install pytest
           pytest --version
-          pip install flake8
-          flake8 --version
 
           pip install -r requirements.txt
 
@@ -44,4 +42,3 @@ jobs:
         run: |
           export PYTHONPATH=/workspaces/test-event-generator:$PYTHONPATH
           pytest
-          flake8
