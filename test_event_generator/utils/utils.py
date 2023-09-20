@@ -107,17 +107,16 @@ def combine_separated_solutions(
     :rtype: :class:`DataFrame`
     """
     # check all list are of equal length
-    if all([
+    if all(
         len(
             separated_solutions[i].columns
         ) - len(
             separated_solutions[i + 1].columns
         ) == 0
         for i in range(len(separated_solutions) - 1)
-    ]):
+    ):
         return concat(separated_solutions)
-    else:
-        raise RuntimeError("All input DataFrame's must be of the same length.")
+    raise RuntimeError("All input DataFrame's must be of the same length.")
 
 
 def add_solution_type_column(
