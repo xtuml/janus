@@ -360,9 +360,7 @@ def graph_loop_event_count_id_tuple(
     :rtype: :class:`GraphSolution`
     """
     graph = deepcopy(graph_with_loop)
-    events = [
-        event for event in graph.events.values()
-    ] + [
+    events = list(graph.events.values()) + [
         event
         for graph_sol in graph.loop_events[2].graph_solutions
         for event in graph_sol.events.values()
@@ -438,9 +436,7 @@ def graph_multiple_loop_events(
         deepcopy(graph_with_loop_copy.loop_events[2].graph_solutions[0])
     ]
     graph = graph_with_loop + graph_with_loop_copy
-    events = [
-        event for event in graph.events.values()
-    ] + [
+    events = list(graph.events.values()) + [
         event
         for loop_event in graph.loop_events.values()
         for graph_sol in loop_event.graph_solutions
@@ -493,9 +489,7 @@ def graph_branch_nested_branch(
     """
     graph = deepcopy(graph_with_branch)
     graph.branch_points[2].graph_solutions = [deepcopy(graph_with_branch)]
-    events = [
-        event for event in graph.events.values()
-    ] + [
+    events = list(graph.events.values()) + [
         event
         for branch_event in graph.branch_points.values()
         for graph_sol in branch_event.graph_solutions
@@ -547,9 +541,7 @@ def graph_branch_nested_branch_prov_outside(
     """
     graph = deepcopy(graph_with_branch)
     graph.branch_points[2].graph_solutions = [deepcopy(graph_with_branch)]
-    events = [
-        event for event in graph.events.values()
-    ] + [
+    events = list(graph.events.values()) + [
         event
         for branch_event in graph.branch_points.values()
         for graph_sol in branch_event.graph_solutions
@@ -618,9 +610,7 @@ def graph_branch_nested_loop_prov_outside(
     """
     graph = deepcopy(graph_with_branch)
     graph.branch_points[2].graph_solutions = [deepcopy(graph_with_loop)]
-    events = [
-        event for event in graph.events.values()
-    ] + [
+    events = list(graph.events.values()) + [
         event
         for branch_event in graph.branch_points.values()
         for graph_sol in branch_event.graph_solutions
@@ -699,9 +689,7 @@ def graph_branch_nested_loop_prov_inside(
     """
     graph = deepcopy(graph_with_branch)
     graph.branch_points[2].graph_solutions = [deepcopy(graph_with_loop)]
-    events = [
-        event for event in graph.events.values()
-    ] + [
+    events = list(graph.events.values()) + [
         event
         for branch_event in graph.branch_points.values()
         for graph_sol in branch_event.graph_solutions

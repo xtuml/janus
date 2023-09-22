@@ -206,6 +206,8 @@ class SolutionStoreCore(CpSolverSolutionCallback):
 
     @property
     def solution_limit(self) -> int | None:
+        """Limit on number of solutions
+        """
         return self.__solution_limit
 
     @solution_limit.setter

@@ -632,7 +632,12 @@ def parsed_graph_with_nested_loop_in_branch(
 
 
 @pytest.fixture
-def graph_def_with_loop_and_branch():
+def graph_def_with_loop_and_branch() -> dict[str, dict]:
+    """Pytest fixture that defines a graph definition containing a...
+
+    :return: Returns the...
+    :rtype: dict[str, dict]
+    """
     json = {
         "Event_A": {
             "group_in": None,
@@ -728,6 +733,15 @@ def graph_def_with_loop_and_branch():
 def parsed_graph_with_loop_and_branch(
     graph_def_with_loop_and_branch: dict[str, dict]
 ) -> Graph:
+    """Pytest fixture to generate a Graph instance from a graph
+    definition with...
+
+    :param graph_def_with_loop_and_branch: Dictionary containing the graph
+        defintion...
+    :type graph_def_with_loop_and_branch: dict[str, dict]
+    :return: Returns the parsed graph
+    :rtype: Graph
+    """
     graph = Graph()
     graph.parse_graph_def(graph_def_with_loop_and_branch)
     return graph
