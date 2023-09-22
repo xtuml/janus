@@ -1,4 +1,4 @@
-# pylint: disable=W605
+# noqa: W605
 """
 Tests for solutions.py
 """
@@ -2896,8 +2896,9 @@ class TestGraphSolutionGenerateAuditEvents:
                 uuid4hex.match(audit_event["eventId"].replace("-", ""))
             )
             if "previousEventIds" in audit_event:
-                previous_event_id == audit_event["eventId"]
+                assert previous_event_id == audit_event["previousEventIds"]
             previous_event_id = audit_event["eventId"]
+
         assert len(audit_event_data[1]) == 3
         assert all(
             audit_event["eventId"] in audit_event_data[1]
@@ -3083,6 +3084,9 @@ class TestEventSolutionDynamicControl:
 
     @staticmethod
     def test_create_dynamic_control_audit_event_data() -> None:
+        """
+        Needs a docstring!
+        """
         event = (
             TestGraphSolutionDynamicControl.test_filter_user_dynamic_controls()
         )
@@ -3096,6 +3100,9 @@ class TestEventSolutionDynamicControl:
 
     @staticmethod
     def test_get_audit_event_json_dynamic_controls():
+        """
+        Needs a docstring!
+        """
         event = (
             TestGraphSolutionDynamicControl.test_filter_user_dynamic_controls()
         )

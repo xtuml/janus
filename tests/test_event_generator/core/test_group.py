@@ -1,4 +1,4 @@
-# pylint: disable=R1732
+# pylint: disable=consider-using-with
 """Testing group.py
 """
 from typing import Type, Union

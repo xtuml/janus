@@ -130,7 +130,6 @@ def check_event_def_equivalency(
             event_def_1_group_out,
             event_def_2_group_out
         )
-        pass
     else:
         assert event_def_1_group_out == event_def_2_group_out
     check_dict_equivalency(
@@ -193,6 +192,14 @@ def check_dict_equivalency(
     dict_1: dict,
     dict_2: dict
 ) -> None:
+    """
+    Fill in docstring!
+
+    :param dict_1: _description_
+    :type dict_1: dict
+    :param dict_2: _description_
+    :type dict_2: dict
+    """
     flat_dict_1 = flatdict.FlatterDict(
         dict_1
     )
@@ -217,6 +224,14 @@ def test_get_graph_defs_from_puml_xor_detach(
     XOR_detach_puml: str,
     XOR_detach_graph_def: dict
 ) -> None:
+    """
+    Fill in docstring!
+
+    :param XOR_detach_puml: _description_
+    :type XOR_detach_puml: str
+    :param XOR_detach_graph_def: _description_
+    :type XOR_detach_graph_def: dict
+    """
     graph_defs = get_graph_defs_from_puml(XOR_detach_puml)
     assert len(graph_defs) == 1
     assert "XORFork_detach" in graph_defs
@@ -237,6 +252,12 @@ def test_get_graph_defs_from_puml_xor_detach(
 def test_get_graph_defs_from_puml_loop_break_fail(
     loop_break_fail_puml: str,
 ) -> None:
+    """
+    Fill in docstring!
+
+    :param loop_break_fail_puml: _description_
+    :type loop_break_fail_puml: str
+    """
     with pytest.raises(KeyError) as error:
         get_graph_defs_from_puml(loop_break_fail_puml)
     assert error.value.args[0][0] is None
@@ -247,6 +268,14 @@ def test_get_graph_defs_from_puml_loop_break(
     loop_break_puml: str,
     loop_break_graph_def: dict
 ) -> None:
+    """
+    Fill in docstring!
+
+    :param loop_break_puml: _description_
+    :type loop_break_puml: str
+    :param loop_break_graph_def: _description_
+    :type loop_break_graph_def: dict
+    """
     graph_defs = get_graph_defs_from_puml(loop_break_puml)
     assert len(graph_defs) == 1
     assert "loop_break" in graph_defs

@@ -195,6 +195,14 @@ def loop_event_solution(
 def graph_single_event(
     event_solution: EventSolution
 ) -> GraphSolution:
+    """
+    Fill in this docstring!
+
+    :param event_solution: _description_
+    :type event_solution: EventSolution
+    :return: _description_
+    :rtype: GraphSolution
+    """
     graph = GraphSolution()
     graph.add_event(deepcopy(event_solution))
     return graph
@@ -205,6 +213,16 @@ def branch_event_solution(
     graph_single_event: GraphSolution,
     graph_simple: GraphSolution
 ) -> BranchEventSolution:
+    """
+    Fill in this docstring!
+
+    :param graph_single_event: _description_
+    :type graph_single_event: GraphSolution
+    :param graph_simple: _description_
+    :type graph_simple: GraphSolution
+    :return: _description_
+    :rtype: BranchEventSolution
+    """
     branch_event = BranchEventSolution(
         graph_solutions=[
             deepcopy(graph_single_event),

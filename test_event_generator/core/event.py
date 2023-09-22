@@ -197,6 +197,7 @@ class LoopEvent(Event):
     :raises :class:`Exception`: Raises an error if the Event is a source and
     has a :class:`Group` instance that enters the Event instance.
     """
+
     def __init__(
         self,
         model: CpModel,
@@ -251,36 +252,7 @@ class LoopEvent(Event):
 
 
 class BranchEvent(LoopEvent):
-    """BranchEvent subclass of :class:`Event`. Holds a sub_graph as a
+    """BranchEvent subclass of :class:`LoopEvent`. Holds a sub_graph as a
     :class:`Graph` instance that defines the event graph within the branch and
     before the merge.
-
-    :param model: The ortools CP-SAT model instance to
-    add the edge as a variable
-    :type model: :class:`CpModel`
-    :param sub_graph_def: The standardised graph definition that defines the
-    loop sub graph.
-    :type sub_graph_def: `dict`
-    :param in_group: The :class:`Group` instance entering the Event, defaults
-    to `None`
-    :type in_group: :class:`Optional`[:class:`Group`], optional
-    :param out_group: The :class:`Group`, defaults to `None`
-    :type out_group: :class:`Optional`[:class:`Group`], optional
-    :param meta_data: A dictionary of meta-data relating to the Event,
-     defaults to `None`
-    :type meta_data: :class:`Optional`[`dict`], optional
-    :raises :class:`Exception`: Raises an error if the Event is a source and
-    has a :class:`Group` instance that enters the Event instance.
     """
-    def __init__(
-        self,
-        model: CpModel,
-        sub_graph: Graph,
-        uid: Optional[str] = None,
-        in_group: Optional[Group] = None,
-        out_group: Optional[Group] = None,
-        meta_data: dict = {}
-    ) -> None:
-        """Constructor method
-        """
-        super().__init__(model, sub_graph, uid, in_group, out_group, meta_data)
