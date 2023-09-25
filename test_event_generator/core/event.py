@@ -39,10 +39,13 @@ class Event:
         uid: Optional[str] = None,
         in_group: Optional[Group] = None,
         out_group: Optional[Group] = None,
-        meta_data: dict = {}
+        meta_data: dict = None
     ) -> None:
         """Constructor method
         """
+        if meta_data is None:
+            meta_data = {}
+
         self.model = model
         self._in_edges: dict[str, Edge] = {}
         self._out_edges: dict[str, Edge] = {}
@@ -205,10 +208,12 @@ class LoopEvent(Event):
         uid: Optional[str] = None,
         in_group: Optional[Group] = None,
         out_group: Optional[Group] = None,
-        meta_data: dict = {}
+        meta_data: dict = None
     ) -> None:
         """Constructor method
         """
+        if meta_data is None:
+            meta_data = {}
         super().__init__(model, uid, in_group, out_group, meta_data)
         self.sub_graph = sub_graph
 
