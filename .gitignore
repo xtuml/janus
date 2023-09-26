@@ -7,3 +7,5 @@ build
 *.egg-info
 # ignore env folder
 env
+
+.mypy_cache/
