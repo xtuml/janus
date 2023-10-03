@@ -23,7 +23,7 @@ from test_event_generator.solutions import (
 
 class TestInvalidMissingEvent:
     """
-    Add class docstring here!
+    Grouping of tests for Invalid missing events
     """
     @staticmethod
     def test_create_invalid_missing_event_sols_from_valid_graph_sol(

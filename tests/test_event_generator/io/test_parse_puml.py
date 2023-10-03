@@ -193,11 +193,11 @@ def check_dict_equivalency(
     dict_2: dict
 ) -> None:
     """
-    Fill in docstring!
+    Method for checking the equivalency of two dictionaries by flattening them
 
-    :param dict_1: _description_
+    :param dict_1: The first dictionary
     :type dict_1: dict
-    :param dict_2: _description_
+    :param dict_2: The second dictionary
     :type dict_2: dict
     """
     flat_dict_1 = flatdict.FlatterDict(
@@ -225,11 +225,12 @@ def test_get_graph_defs_from_puml_xor_detach(
     XOR_detach_graph_def: dict
 ) -> None:
     """
-    Fill in docstring!
+    Tests method get_graph_defs_from_puml with the detach statment in the puml
+    file
 
-    :param XOR_detach_puml: _description_
+    :param XOR_detach_puml: Fixture providing a puml with a detach statement
     :type XOR_detach_puml: str
-    :param XOR_detach_graph_def: _description_
+    :param XOR_detach_graph_def: Fixture providing the expected graph def
     :type XOR_detach_graph_def: dict
     """
     graph_defs = get_graph_defs_from_puml(XOR_detach_puml)
@@ -253,9 +254,11 @@ def test_get_graph_defs_from_puml_loop_break_fail(
     loop_break_fail_puml: str,
 ) -> None:
     """
-    Fill in docstring!
+    Tests method get_graph_defs_from_puml when the puml contains a break
+    statment that should fail
 
-    :param loop_break_fail_puml: _description_
+    :param loop_break_fail_puml: fixture providing a puml with a break statement
+        that should fail
     :type loop_break_fail_puml: str
     """
     with pytest.raises(KeyError) as error:
@@ -269,11 +272,12 @@ def test_get_graph_defs_from_puml_loop_break(
     loop_break_graph_def: dict
 ) -> None:
     """
-    Fill in docstring!
+    Tests method `get_graph_defs_from_puml` with a puml file with a loop break
 
-    :param loop_break_puml: _description_
+    :param loop_break_puml: Fixture providing a puml file with a loop break
+        statement
     :type loop_break_puml: str
-    :param loop_break_graph_def: _description_
+    :param loop_break_graph_def: Fixture providing the expected graph definition
     :type loop_break_graph_def: dict
     """
     graph_defs = get_graph_defs_from_puml(loop_break_puml)

@@ -3085,7 +3085,7 @@ class TestEventSolutionDynamicControl:
     @staticmethod
     def test_create_dynamic_control_audit_event_data() -> None:
         """
-        Needs a docstring!
+        Tests the method :class:EventSolution.create_dynamic_control_audit_event_data
         """
         event = (
             TestGraphSolutionDynamicControl.test_filter_user_dynamic_controls()
@@ -3101,7 +3101,7 @@ class TestEventSolutionDynamicControl:
     @staticmethod
     def test_get_audit_event_json_dynamic_controls():
         """
-        Needs a docstring!
+        Tests :class:EventSolution.get_audit_event_json
         """
         event = (
             TestGraphSolutionDynamicControl.test_filter_user_dynamic_controls()

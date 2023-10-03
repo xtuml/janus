@@ -196,11 +196,12 @@ def graph_single_event(
     event_solution: EventSolution
 ) -> GraphSolution:
     """
-    Fill in this docstring!
+    Fixture providing a :class:`GraphSolution` containing a single
+    :class:`EventSolution`
 
-    :param event_solution: _description_
+    :param event_solution: Fixture providing a :class:`EventSolution`
     :type event_solution: EventSolution
-    :return: _description_
+    :return: Returns the :class:`GraphSolution`
     :rtype: GraphSolution
     """
     graph = GraphSolution()
@@ -214,13 +215,17 @@ def branch_event_solution(
     graph_simple: GraphSolution
 ) -> BranchEventSolution:
     """
-    Fill in this docstring!
+    Fixture providing a :class:BranchEventSolution containing a single event
+    :class:GraphSolution and a simple three event straight line
+    :class:GraphSolution
 
-    :param graph_single_event: _description_
+    :param graph_single_event: Fixture providing single event
+        :class:GraphSolution
     :type graph_single_event: GraphSolution
-    :param graph_simple: _description_
+    :param graph_simple: Fixture providing a simple three event straight line
+        :class:GraphSolution
     :type graph_simple: GraphSolution
-    :return: _description_
+    :return: Returns the :class:BranchEventSolution
     :rtype: BranchEventSolution
     """
     branch_event = BranchEventSolution(
