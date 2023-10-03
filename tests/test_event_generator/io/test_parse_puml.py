@@ -257,8 +257,8 @@ def test_get_graph_defs_from_puml_loop_break_fail(
     Tests method get_graph_defs_from_puml when the puml contains a break
     statment that should fail
 
-    :param loop_break_fail_puml: fixture providing a puml with a break statement
-        that should fail
+    :param loop_break_fail_puml: fixture providing a puml with a break
+        statement that should fail
     :type loop_break_fail_puml: str
     """
     with pytest.raises(KeyError) as error:
@@ -277,7 +277,8 @@ def test_get_graph_defs_from_puml_loop_break(
     :param loop_break_puml: Fixture providing a puml file with a loop break
         statement
     :type loop_break_puml: str
-    :param loop_break_graph_def: Fixture providing the expected graph definition
+    :param loop_break_graph_def: Fixture providing the expected graph
+        definition
     :type loop_break_graph_def: dict
     """
     graph_defs = get_graph_defs_from_puml(loop_break_puml)

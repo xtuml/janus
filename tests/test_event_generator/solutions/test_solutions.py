@@ -3085,7 +3085,8 @@ class TestEventSolutionDynamicControl:
     @staticmethod
     def test_create_dynamic_control_audit_event_data() -> None:
         """
-        Tests the method :class:EventSolution.create_dynamic_control_audit_event_data
+        Tests the method
+        :class:EventSolution.create_dynamic_control_audit_event_data
         """
         event = (
             TestGraphSolutionDynamicControl.test_filter_user_dynamic_controls()
