@@ -208,7 +208,7 @@ class LoopEvent(Event):
         uid: Optional[str] = None,
         in_group: Optional[Group] = None,
         out_group: Optional[Group] = None,
-        meta_data: dict = None
+        meta_data: Optional[dict] = None
     ) -> None:
         """Constructor method
         """
