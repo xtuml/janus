@@ -766,3 +766,52 @@ def graph_branch_nested_loop_prov_inside(
         }
     )
     return graph
+
+
+@pytest.fixture
+def output_job_list() -> list[dict]:
+    """Fixture to provide a list of events from the same job
+
+    :return: Returns a list of events from the same job
+    :rtype: `list`[`dict`]
+    """
+    return [
+        {
+            "jobName": "default_job_name",
+            "jobId": "21933465-f595-41b3-ab33-7ab4f454fabe",
+            "eventType": "Event_A",
+            "eventId": "00852212-fb2d-4e84-ac6e-fa27c43b94fa",
+            "timestamp": "2024-01-25T15:40:24Z",
+            "applicationName": "default_application_name"
+        },
+        {
+            "jobName": "default_job_name",
+            "jobId": "21933465-f595-41b3-ab33-7ab4f454fabe",
+            "eventType": "Event_C",
+            "eventId": "6c1160cf-3a2f-441d-ac1f-6df5dae66029",
+            "timestamp": "2024-01-25T15:40:25Z",
+            "applicationName": "default_application_name",
+            "previousEventIds": "00852212-fb2d-4e84-ac6e-fa27c43b94fa"
+        },
+        {
+            "jobName": "default_job_name",
+            "jobId": "21933465-f595-41b3-ab33-7ab4f454fabe",
+            "eventType": "Event_D",
+            "eventId": "037589ba-8405-4af5-80d4-e6fba4f83e36",
+            "timestamp": "2024-01-25T15:40:26Z",
+            "applicationName": "default_application_name",
+            "previousEventIds": "00852212-fb2d-4e84-ac6e-fa27c43b94fa"
+        },
+        {
+            "jobName": "default_job_name",
+            "jobId": "21933465-f595-41b3-ab33-7ab4f454fabe",
+            "eventType": "Event_E",
+            "eventId": "92d0c1dc-adba-4165-890a-e2310c7b6318",
+            "timestamp": "2024-01-25T15:40:27Z",
+            "applicationName": "default_application_name",
+            "previousEventIds": [
+                "6c1160cf-3a2f-441d-ac1f-6df5dae66029",
+                "037589ba-8405-4af5-80d4-e6fba4f83e36"
+            ]
+        }
+    ]

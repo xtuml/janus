@@ -990,6 +990,71 @@ class GraphSolution:
         # count all dynamic controls
         for graph_sol in graph_solutions:
             graph_sol.update_control_event_counts()
+    
+    def update_events_from_job_event_list(
+        self,
+        job_list: list[dict]
+    ) -> None:
+        """Method to update the events from a list of job events
+
+        :param job_list: List of job events
+        :type job_list: `list`[`dict`]
+        """
+        event_id_map: dict[
+            str, tuple[EventSolution, list[str]]
+        ] = {}
+        # iterate over the list of dicts
+        for input_dict in job_list:
+            template_event = EventSolution(
+                meta_data={
+                    "EventType": input_dict["eventType"],
+                }
+            )
+            previous_event_ids = []
+            if "previousEventIds" in input_dict:
+                if isinstance(input_dict["previousEventIds"], str):
+                    previous_event_ids.append(
+                        input_dict["previousEventIds"]
+                    )
+                else:
+                    previous_event_ids.extend(
+                        input_dict["previousEventIds"]
+                    )
+            event_id_map[input_dict["eventId"]] = (
+                template_event,
+                previous_event_ids
+            )
+        # link events
+        for event_tuple in event_id_map.values():
+            event, previous_event_ids = event_tuple
+            for previous_event_id in previous_event_ids:
+                event.add_prev_event(event_id_map[previous_event_id][0])
+            event.add_to_previous_events()
+        # parse events
+        self.parse_event_solutions(
+            list(
+                event_tuple[0]
+                for event_tuple in event_id_map.values()
+            )
+        )
+    
+    @classmethod
+    def from_event_list(
+        cls,
+        event_list: list[dict]
+    ) -> "GraphSolution":
+        """Method to create a :class:`GraphSolution` from a list of
+        :class:`dict`'s of events
+
+        :param event_list: List of :class:`dict`'s
+        :type event_list: `list`[`dict`]
+        :return: Returns a :class:`GraphSolution` instance
+        :rtype: :class:`GraphSolution`
+        """
+        graph_solution = cls()
+        graph_solution.update_events_from_job_event_list(event_list)
+        return graph_solution
+        
 
 
 def get_audit_event_jsons_and_templates(
