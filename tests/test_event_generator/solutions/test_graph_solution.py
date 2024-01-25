@@ -4,6 +4,8 @@ from test_event_generator.solutions import GraphSolution
 
 
 class TestGraphSolution:
+    """Test the graph solution methods
+    """
     @staticmethod
     def test_update_events_from_job_event_list(
         output_job_list: list[dict],
