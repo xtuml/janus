@@ -9,7 +9,8 @@ from test_event_generator.solutions.graph_solution import (  # noqa: F401
     LoopEventSolution,
     SubGraphEventSolution,
     get_audit_event_jsons_and_templates,
-    get_categorised_audit_event_jsons
+    get_categorised_audit_event_jsons,
+    get_audit_event_jsons_and_templates_all_topological_permutations
 )
 from test_event_generator.solutions.invalid_solutions import (  # noqa: F401
     create_invalid_linked_ghost_event_sols_from_valid_sol,
