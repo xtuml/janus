@@ -4,7 +4,7 @@ on:
 
   push:
     branches:
-      main
+      '**'
 jobs:
   sast:
     uses: SmartDCSITlimited/actions-store/.github/workflows/SAST.yml@main
@@ -14,7 +14,7 @@ jobs:
     uses: SmartDCSITlimited/actions-store/.github/workflows/PythonLinting.yml@main
 
   run-tests:
-    runs-on: sh-k8s-runner
+    runs-on: ubuntu-latest
     steps:
       - name: Setup Checkout
         uses: actions/checkout@v4
@@ -22,7 +22,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: 'pip'
 
       - name: Install Requirements
