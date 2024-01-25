@@ -22,6 +22,9 @@ from test_event_generator.solutions import (
 
 
 class TestInvalidMissingEvent:
+    """
+    Grouping of tests for Invalid missing events
+    """
     @staticmethod
     def test_create_invalid_missing_event_sols_from_valid_graph_sol(
         graph_simple: GraphSolution
@@ -56,6 +59,8 @@ class TestInvalidMissingEvent:
         :class:`GraphSolution`
         :type graph_simple: :class:`GraphSolution`
         """
+
+        _ = graph_simple  # Why does this need to be passed to function?
         assert len(invalid_missing_event_sols) == 3
         for i, graph_sol in enumerate(invalid_missing_event_sols):
             assert graph_sol.events[i + 1] == graph_sol.missing_events[0]

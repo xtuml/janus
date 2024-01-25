@@ -1616,6 +1616,7 @@ class TestGraphGenerateSolutions(TestLoopFixtures):
             graph_solutions=graph_solutions
         )
 
+    @staticmethod
     def check_nested_unexpanded_graph_solutions(
         graph_solutions: list[GraphSolution]
     ) -> None:
@@ -1890,14 +1891,14 @@ class TestGraphGenerateInvalidSolutions:
             variables=all_variables
         )
         # with no constraints there should be 2^5 solutions
-        len(solutions) == 32
+        assert len(solutions) == 32
         # generate the expected solutions
         expected_sols = np.asarray(
             list(product((0, 1), repeat=5)), dtype=int
         )
         # actual solutions as array
         actual_sols = np.asarray([
-            [val for val in solution.values()]
+            list(solution.values())
             for solution in solutions
         ], dtype=int)
         assert np.array_equiv(

@@ -1,11 +1,15 @@
+"""Docstring required here!!!
+"""
 from typing import Literal
 import pytest
+# pylint: disable=unused-import
 from tests.test_event_generator.solutions.conftest import (  # noqa: F401
     graph_simple,
     event_solution,
     prev_event_solution,
     post_event_solution
 )
+# pylint: enable=unused-import
 
 
 @pytest.fixture

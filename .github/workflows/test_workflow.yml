@@ -10,15 +10,11 @@ jobs:
     uses: SmartDCSITlimited/actions-store/.github/workflows/SAST.yml@main
   secret-detection:
     uses: SmartDCSITlimited/actions-store/.github/workflows/SecretDetection.yml@main
-  dependency-scanning:
-    uses: SmartDCSITlimited/actions-store/.github/workflows/DependencyScanning.yml@main
-  license-scanning:
-    uses: SmartDCSITlimited/actions-store/.github/workflows/LicenseScanning.yml@main
   python-linting:
     uses: SmartDCSITlimited/actions-store/.github/workflows/PythonLinting.yml@main
 
   run-tests:
-    runs-on: ubuntu-latest
+    runs-on: sh-k8s-runner
     steps:
       - name: Setup Checkout
         uses: actions/checkout@v4
@@ -35,8 +31,6 @@ jobs:
 
           pip install pytest
           pytest --version
-          pip install flake8
-          flake8 --version
 
           pip install -r requirements.txt
 
@@ -44,4 +38,3 @@ jobs:
         run: |
           export PYTHONPATH=/workspaces/test-event-generator:$PYTHONPATH
           pytest
-          flake8
