@@ -990,7 +990,7 @@ class GraphSolution:
         # count all dynamic controls
         for graph_sol in graph_solutions:
             graph_sol.update_control_event_counts()
-    
+
     def update_events_from_job_event_list(
         self,
         job_list: list[dict]
@@ -1037,7 +1037,7 @@ class GraphSolution:
                 for event_tuple in event_id_map.values()
             )
         )
-    
+
     @classmethod
     def from_event_list(
         cls,
@@ -1054,7 +1054,6 @@ class GraphSolution:
         graph_solution = cls()
         graph_solution.update_events_from_job_event_list(event_list)
         return graph_solution
-        
 
 
 def get_audit_event_jsons_and_templates(

@@ -1,9 +1,7 @@
 """Extra tests for the graph solution.
 """
-
-import pytest
-
 from test_event_generator.solutions import GraphSolution
+
 
 class TestGraphSolution:
     @staticmethod
@@ -38,5 +36,3 @@ class TestGraphSolution:
         assert len(end_event.previous_events) == 2
         for end_event_previous_event in end_event.previous_events:
             assert end_event_previous_event in post_events
-
-        
