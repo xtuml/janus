@@ -6,7 +6,7 @@
 Classes and methods to process and combine solutions
 """
 from __future__ import annotations
-from typing import Iterable, Callable, Optional, Generator
+from typing import Iterable, Callable, Optional, Generator, Any
 from copy import copy, deepcopy
 from itertools import chain
 import datetime
@@ -675,10 +675,62 @@ class GraphSolution:
         :rtype: `tuple`[`list`[`dict`], `list`[`str`], :class:`plt.Figure` |
         `None`, str]
         """
-        self.update_events_event_template_id(is_template)
         ordered_events = self.get_topologically_sorted_event_sequence(
             self.events.values()
         )
+        return self.get_audit_event_jsons_and_templates_from_ordered_events(
+            ordered_events=ordered_events,
+            is_template=is_template,
+            job_name=job_name,
+            start_time=start_time,
+            job_id=job_id,
+            return_plot=return_plot
+        )
+
+    def get_audit_event_jsons_and_templates_from_ordered_events(
+        self,
+        ordered_events: Iterable["EventSolution"],
+        is_template: bool = True,
+        job_name: str = "default_job_name",
+        start_time: Optional[datetime.datetime] = None,
+        job_id: Optional[str] = None,
+        return_plot: bool = False
+    ) -> tuple[list[dict], list[str], plt.Figure | None, str]:
+        """Method to create the audit event jsons for the instance. Updates
+        the event_templateid's for each :class:`EventSolution` first. Provides
+        a timestamp to each of the events 1 second after the next event in the
+        list. Returns the list of audit event jsons as well as a list of the
+        audit event event_template_id's.
+
+        :param ordered_events: The ordered events to create the audit event
+        jsons from
+        :type ordered_events: :class:`Iterable`[:class:`EventSolution`]
+        :param is_template: Boolean indicating if job is a template
+        job or unique ids should be provided for events and the job,
+        defaults to `True`
+        :type is_template: `bool`, optional
+        :param job_name: The job definition name, defaults to
+        "default_job_name"
+        :type job_name: `str`, optional
+        :param start_time: The :class:`datetime.datetime` at which to start
+        the audit events, defaults to `None`
+        :type start_time: :class:`Optional`[:class:`datetime.datetime`],
+        optional
+        :param job_id: The job id to give to the audit events, defaults to
+        `None`
+        :param return_plot: Boolean indicating if a figure object of the
+        topologically sorted graph should be returned or not, defaults to
+        `False`
+        :type return_plot: `bool`, optional
+        :return: Returns a tuple of:
+        * a list of the audit event jsons
+        * a list of the event template ids
+        * A figure object of topologically sorted graph or `None`
+        * The job id
+        :rtype: `tuple`[`list`[`dict`], `list`[`str`], :class:`plt.Figure` |
+        `None`, str]
+        """
+        self.update_events_event_template_id(is_template)
         (
             audit_event_sequence,
             audit_event_template_ids,
@@ -698,6 +750,35 @@ class GraphSolution:
             )
 
         return audit_event_sequence, audit_event_template_ids, fig, job_id
+    
+    def get_audit_event_jsons_and_templates_all_topological_permutations(
+        self,
+    ) -> Generator[tuple[list[dict], list[str], plt.Figure | None, str], None, None]:
+        """Method to create the audit event jsons for the instance. Updates
+        the event_templateid's for each :class:`EventSolution` first and
+        uses a topological sort (Kahn's algotrithm) to order the events.
+        Provides a timestamp to each of the events 1 second after the next
+        event in the list. Yields a list of audit event jsons as well as a
+        list of the audit event event_template_id's for one of the topological
+        sort permutations
+
+        :return: Returns a tuple of:
+        * a list of the audit event jsons
+        * a list of the event template ids
+        * A figure object of topologically sorted graph or `None`
+        * The job id
+        :rtype: `tuple`[`list`[`dict`], `list`[`str`], :class:`plt.Figure` |
+        `None`, str]
+        """
+        for ordered_events in self.get_topologically_sorted_event_sequence_all_permutations(
+            self.events.values()
+        ):
+            yield self.get_audit_event_jsons_and_templates_from_ordered_events(
+                ordered_events=ordered_events,
+                is_template=False,
+                return_plot=False,
+            )
+        
 
     def update_events_event_template_id(
         self,
@@ -735,6 +816,28 @@ class GraphSolution:
         )
         ordered_events = list(nx.topological_sort(nx_graph))
         return ordered_events
+
+    @staticmethod
+    def get_topologically_sorted_event_sequence_all_permutations(
+        events: Iterable["EventSolution"]
+    ) -> Generator[list["EventSolution"], None, None]:
+        """Takes an iterable of :class:`EventSolution` and topologically sorts
+        them based on the Directed Acyclic Graph (DAG) that they represent.
+        Returns a generator of all possible permutations of the topologically
+        sorted events.
+
+        :param events: Iterable of the :class:`EventSolution`'s to sort
+        :type events: :class:`Iterable`[:class:`EventSolution`]
+        :return: Returns a generator of all possible permutations of the
+        topologically sorted events
+        :rtype: :class:`Generator`[:class:`list`[:class:`EventSolution`], None,
+        None]
+        """
+        nx_graph = GraphSolution.create_networkx_graph_from_nodes(
+            nodes=events,
+            link_func=lambda x: x.get_post_event_edge_tuples()
+        )
+        yield from nx.all_topological_sorts(nx_graph)
 
     @staticmethod
     def create_networkx_graph_from_nodes(
@@ -1089,6 +1192,27 @@ def get_audit_event_jsons_and_templates(
             job_name=job_name,
             return_plot=return_plots
         )
+
+
+def get_audit_event_jsons_and_templates_all_topological_permutations(
+    graph_solutions: list[GraphSolution],
+) -> Generator[tuple[list[dict], list[str], plt.Figure | None, str], Any, None]:
+    """Function create a list of audit event sequence and audit eventId
+    template pairs for a list of :class:`GraphSolution`'s. Returns a generator
+    of all possible permutations of the topologically sorted events.
+
+    :param graph_solutions: List of :class:`GraphSolution`'s
+    :type graph_solutions: `list`[:class:`GraphSolution`]
+    :return: Returns the list of audit event sequence, audit eventIds,
+    figure object and job id
+    :rtype: :class:`Generator`[`tuple`[`list`[`dict`], `list`[`str`],
+    :class:`plt.Figure` | `None, `str`]]
+    """
+
+    for graph_solution in graph_solutions:
+        yield from graph_solution.get_audit_event_jsons_and_templates_all_topological_permutations()
+
+        
 
 
 def get_categorised_audit_event_jsons(
