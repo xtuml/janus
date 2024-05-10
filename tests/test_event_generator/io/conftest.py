@@ -531,7 +531,8 @@ def XOR_detach_graph_def() -> dict[str, dict]:
             "meta_data": {
                 "EventType": "C",
                 "isBreak": False,
-                "occurenceId": 0
+                "occurenceId": 0,
+                "isKill": True
             }
         },
         "D_0": {
@@ -904,3 +905,36 @@ def branch_graph_def() -> dict:
             }
         }
     }
+
+
+@pytest.fixture
+def kill_in_loop_puml(
+) -> Literal['@startuml\npartition "kill_in_loop" {\n    group "k…']:
+    """Fixture to provide a puml file with a kill statement in a loop
+
+    :return: Returns a string of the puml file
+    :rtype: `str`
+    """
+    return (
+        '@startuml\n'
+        'partition "kill_in_loop" {\n'
+        '    group "kill_in_loop"\n'
+        '        #green:A;\n'
+        '        repeat\n'
+        '            :B;\n'
+        '            fork\n'
+        '                :C;\n'
+        '            fork again\n'
+        '                :D;\n'
+        '                kill\n'
+        '            fork again\n'
+        '                :E;\n'
+        '                kill\n'
+        '            end fork\n'
+        '            :F;\n'
+        '        repeat while\n'
+        '        :G;\n'
+        '    end group\n'
+        '}\n'
+        '@enduml'
+    )
