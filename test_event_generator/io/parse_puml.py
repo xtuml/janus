@@ -599,7 +599,8 @@ class Job:
                 "meta_data": {
                     "EventType": event.event_type,
                     "isBreak": event.is_break,
-                    "occurenceId": event.occurence_id
+                    "occurenceId": event.occurence_id,
+                    "isKill": event.is_end
                 }
             }
             if event.branch_counts or event.loop_counts:
