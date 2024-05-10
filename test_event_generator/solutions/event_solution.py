@@ -28,6 +28,12 @@ class EventSolution:
     :param meta_data: Optional meta data to include with the event, defaults
     to `None`
     :type meta_data: :class:`Optional`[`dict`], optional
+    :param event_id_tuple: Tuple containing the EventType and occurenceId of
+    the event, defaults to `None`
+    :type event_id_tuple: :class:`Optional`[`tuple`[`str`, `int`]], optional
+    :param is_kill: Boolean indicating if the Event is a kill point,
+    defaults to `False`
+    :type is_kill: `bool`, optional
     """
     def __init__(
         self,
@@ -35,6 +41,7 @@ class EventSolution:
         is_break_point: bool = False,
         meta_data: Optional[dict] = None,
         event_id_tuple: Optional[tuple[str, int]] = None,
+        is_kill: bool = False,
         **kwargs
     ) -> None:
         """Constructor method
@@ -49,6 +56,7 @@ class EventSolution:
         self.event_template_id: str = ""
         _ = kwargs
         self.count = 0
+        self.is_kill = is_kill
         # parse meta data
         self.parse_meta_data(meta_data)
 
@@ -161,7 +169,7 @@ class EventSolution:
         :return: Boolean indicating if the instance is an end event.
         :rtype: `bool`
         """
-        return len(self.post_events) == 0
+        return len(self.post_events) == 0 and not self.is_kill
 
     @property
     def event_template_id(self) -> str:
@@ -280,6 +288,8 @@ class EventSolution:
             )
         if "isBreak" in meta_data:
             self.is_break_point = meta_data["isBreak"]
+        if "isKill" in meta_data:
+            self.is_kill = meta_data["isKill"]
         self.parse_event_id_tuple(meta_data)
 
     def parse_event_id_tuple(
@@ -351,7 +361,8 @@ class EventSolution:
         copied_event = EventSolution(
             is_break_point=self.is_break_point,
             meta_data=self.meta_data,
-            event_id_tuple=self.event_id_tuple
+            event_id_tuple=self.event_id_tuple,
+            is_kill=self.is_kill
         )
         copied_event.previous_events = copy(self.previous_events)
         copied_event.post_events = copy(self.post_events)
