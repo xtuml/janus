@@ -488,3 +488,50 @@ def test_puml_to_test_events_branch_events(
     for _ in test_events["Branch_Counts"]["ValidSols"][0]:
         counter += 1
     assert counter == 2
+
+
+def test_kill_in_loop(
+    kill_in_loop_puml: str
+) -> None:
+    """Tests `puml_to_test_events` to ensure the correct out connections
+    are generated when a kill event is present in a loop
+
+    :param kill_in_loop_puml: Fixture providing a string representation of a
+    puml file containing a kill event in a loop
+    :type kill_in_loop_puml: `str`
+    """
+    options = {
+        "is_template": False,
+        "return_plots": False,
+        "invalid": False,
+        "num_branches": 2,
+        "num_loops": 2,
+    }
+    test_events = puml_to_test_events(
+        kill_in_loop_puml,
+        **options
+    )
+    solutions = list(test_events["kill_in_loop"]["ValidSols"][0])
+    # check only one solution is found
+    assert len(solutions) == 1
+    graph_solution = GraphSolution.from_event_list(solutions[0][0])
+    # check the number of events is correct
+    assert len(graph_solution.events) == 12
+    expected_out_events = {
+        "A": {"B"},
+        "B": {"C", "D", "E"},
+        "C": {"F"},
+        "D": set(),
+        "E": set(),
+        "F": {"B", "G"},
+        "G": set(),
+    }
+    # check out edges are correct
+    for event in graph_solution.events.values():
+        event_type = event.meta_data["EventType"]
+        assert event_type in expected_out_events
+        out_event_types = set(
+            out_event.meta_data["EventType"]
+            for out_event in event.post_events
+        )
+        assert out_event_types.issubset(expected_out_events[event_type])
