@@ -7,11 +7,11 @@ on:
       '**'
 jobs:
   sast:
-    uses: SmartDCSITlimited/actions-store/.github/workflows/SAST.yml@main
+    uses: ./.github/workflows/SAST.yml
   secret-detection:
-    uses: SmartDCSITlimited/actions-store/.github/workflows/SecretDetection.yml@main
+    uses: ./.github/workflows/SecretDetection.yml
   python-linting:
-    uses: SmartDCSITlimited/actions-store/.github/workflows/PythonLinting.yml@main
+    uses: ./.github/workflows/PythonLinting.yml
 
   run-tests:
     runs-on: ubuntu-latest
