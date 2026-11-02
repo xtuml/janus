@@ -10,7 +10,7 @@ idna==3.6
 iniconfig==2.0.0
 kiwisolver==1.4.5
 matplotlib==3.8.2
-networkx==3.2.1
+networkx==3.3
 numpy==1.26.3
 ortools==9.8.3296
 packaging==23.2
