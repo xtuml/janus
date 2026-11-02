@@ -15,7 +15,7 @@ numpy==1.26.3
 ortools==9.8.3296
 packaging==23.2
 pandas==2.2.0
-pillow==10.2.0
+pillow==13.0.0
 pipreqs==0.4.13
 pluggy==1.4.0
 protobuf==4.25.2
